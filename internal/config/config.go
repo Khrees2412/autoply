@@ -14,6 +14,9 @@ type Config struct {
 	AnthropicKey  string `mapstructure:"anthropic_key"`
 	AIProvider    string `mapstructure:"ai_provider"` // openai, anthropic
 	DefaultModel  string `mapstructure:"default_model"`
+	// Job board credentials
+	LinkedInEmail string `mapstructure:"linkedin_email"`
+	LinkedInPassword string `mapstructure:"linkedin_password"`
 }
 
 var AppConfig *Config
@@ -48,6 +51,8 @@ func Initialize() error {
 	viper.SetDefault("default_model", "gpt-4")
 	viper.SetDefault("openai_key", "")
 	viper.SetDefault("anthropic_key", "")
+	viper.SetDefault("linkedin_email", "")
+	viper.SetDefault("linkedin_password", "")
 
 	// Read config
 	if err := viper.ReadInConfig(); err != nil {
@@ -73,6 +78,10 @@ default_model: gpt-4
 # API Keys (keep this file secure!)
 openai_key: ""
 anthropic_key: ""
+
+# Job Board Credentials (keep this file secure!)
+linkedin_email: ""
+linkedin_password: ""
 `
 	return os.WriteFile(path, []byte(defaultConfig), 0600)
 }

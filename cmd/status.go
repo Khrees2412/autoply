@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/khrees2412/autoply/internal/database"
 	"github.com/khrees2412/autoply/pkg/models"
@@ -139,10 +140,21 @@ var updateStatusCmd = &cobra.Command{
 var applyCmd = &cobra.Command{
 	Use:   "apply <job-id>",
 	Short: "Mark a job as applied",
-	Args:  cobra.ExactArgs(1),
+	Args:  cobra.MinimumNArgs(1),
 	Example: `  autoply apply 1
-  autoply apply 5 --notes "Applied via LinkedIn"`,
+  autoply apply 5 --notes "Applied via LinkedIn"
+  autoply apply --batch job-ids.txt`,
 	Run: func(cmd *cobra.Command, args []string) {
+		batchFile, _ := cmd.Flags().GetString("batch")
+		dryRun, _ := cmd.Flags().GetBool("dry-run")
+
+		// Handle batch operations
+		if batchFile != "" {
+			handleBatchApply(batchFile, dryRun)
+			return
+		}
+
+		// Single job application
 		var jobID int
 		if _, err := fmt.Sscanf(args[0], "%d", &jobID); err != nil {
 			fmt.Println("Invalid job ID. Must be a number.")
@@ -232,4 +244,101 @@ func init() {
 
 	// Flags for apply command
 	applyCmd.Flags().String("notes", "", "Add notes to the application")
+	applyCmd.Flags().String("batch", "", "Apply to multiple jobs from a file (one job ID per line)")
+	applyCmd.Flags().Bool("dry-run", false, "Preview without actually applying")
+}
+
+// handleBatchApply processes batch job applications
+func handleBatchApply(batchFile string, dryRun bool) {
+	// Read job IDs from file
+	data, err := os.ReadFile(batchFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading batch file: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Parse job IDs (one per line)
+	lines := strings.Split(string(data), "\n")
+	jobIDs := []int{}
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue // Skip empty lines and comments
+		}
+		var jobID int
+		if _, err := fmt.Sscanf(line, "%d", &jobID); err == nil {
+			jobIDs = append(jobIDs, jobID)
+		}
+	}
+
+	if len(jobIDs) == 0 {
+		fmt.Println("No valid job IDs found in batch file")
+		return
+	}
+
+	fmt.Printf("Found %d jobs to apply to\n", len(jobIDs))
+	if dryRun {
+		fmt.Println("DRY RUN MODE - No applications will be created")
+	}
+
+	successCount := 0
+	failCount := 0
+
+	for _, jobID := range jobIDs {
+		if dryRun {
+			job, err := database.GetJob(jobID)
+			if err != nil {
+				fmt.Printf("  [DRY RUN] Job %d: Not found\n", jobID)
+				failCount++
+				continue
+			}
+			fmt.Printf("  [DRY RUN] Would apply to: %s at %s\n", job.Title, job.Company)
+			successCount++
+			continue
+		}
+
+		// Check if job exists
+		job, err := database.GetJob(jobID)
+		if err != nil {
+			fmt.Printf("  ✗ Job %d: Not found\n", jobID)
+			failCount++
+			continue
+		}
+
+		// Check if already applied
+		existing, _ := database.GetApplicationByJobID(jobID)
+		if existing != nil {
+			fmt.Printf("  ⊘ Job %d: Already applied (Status: %s)\n", jobID, existing.Status)
+			continue
+		}
+
+		// Get default resume
+		resume, _ := database.GetDefaultResume()
+		var resumeID int
+		if resume != nil {
+			resumeID = resume.ID
+		}
+
+		// Create application
+		app := &models.Application{
+			JobID:    jobID,
+			ResumeID: resumeID,
+			Status:   "applied",
+		}
+
+		if err := database.CreateApplication(app); err != nil {
+			fmt.Printf("  ✗ Job %d: Error - %v\n", jobID, err)
+			failCount++
+			continue
+		}
+
+		fmt.Printf("  ✓ Applied to: %s at %s\n", job.Title, job.Company)
+		successCount++
+	}
+
+	fmt.Printf("\n✓ Successfully applied to %d jobs\n", successCount)
+	if failCount > 0 {
+		fmt.Printf("✗ Failed to apply to %d jobs\n", failCount)
+	}
 }

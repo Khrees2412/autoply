@@ -97,9 +97,27 @@ func DeleteJob(id int) error {
 	return err
 }
 
+func GetJobByURL(url string) (*models.Job, error) {
+	query := `SELECT id, title, company, location, url, description, salary_range, 
+			  source, posted_date, scraped_at, match_score FROM jobs WHERE url=?`
+	job := &models.Job{}
+	err := DB.QueryRow(query, url).Scan(&job.ID, &job.Title, &job.Company, &job.Location, 
+		&job.URL, &job.Description, &job.SalaryRange, &job.Source, &job.PostedDate, 
+		&job.ScrapedAt, &job.MatchScore)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return job, err
+}
+
 // Resume operations
 
 func CreateResume(resume *models.Resume) error {
+	// If setting as default, unset all other defaults first
+	if resume.IsDefault {
+		_, _ = DB.Exec("UPDATE resumes SET is_default=0")
+	}
+	
 	query := `INSERT INTO resumes (name, file_path, content_text, is_default) 
 			  VALUES (?, ?, ?, ?)`
 	result, err := DB.Exec(query, resume.Name, resume.FilePath, resume.ContentText, resume.IsDefault)
@@ -109,6 +127,17 @@ func CreateResume(resume *models.Resume) error {
 	id, _ := result.LastInsertId()
 	resume.ID = int(id)
 	return nil
+}
+
+func SetDefaultResume(resumeID int) error {
+	// Unset all defaults first
+	_, err := DB.Exec("UPDATE resumes SET is_default=0")
+	if err != nil {
+		return err
+	}
+	// Set the specified resume as default
+	_, err = DB.Exec("UPDATE resumes SET is_default=1 WHERE id=?", resumeID)
+	return err
 }
 
 func GetAllResumes() ([]*models.Resume, error) {
@@ -267,6 +296,12 @@ func GetUserSkills(userID int) ([]*models.Skill, error) {
 	return skills, nil
 }
 
+func DeleteSkill(id int) error {
+	query := `DELETE FROM skills WHERE id=?`
+	_, err := DB.Exec(query, id)
+	return err
+}
+
 // Experience operations
 
 func CreateExperience(exp *models.Experience) error {
@@ -302,6 +337,12 @@ func GetUserExperiences(userID int) ([]*models.Experience, error) {
 		experiences = append(experiences, exp)
 	}
 	return experiences, nil
+}
+
+func DeleteExperience(id int) error {
+	query := `DELETE FROM experiences WHERE id=?`
+	_, err := DB.Exec(query, id)
+	return err
 }
 
 // Helper function to format application data with job details
@@ -340,6 +381,58 @@ func GetApplicationsWithJobs() ([]map[string]interface{}, error) {
 			"company":    company,
 			"location":   location,
 			"url":        url,
+		})
+	}
+	return results, nil
+}
+
+// SaveSearchQuery saves a search query for later use
+func SaveSearchQuery(name, query, location, source string) error {
+	// Create a simple table for saved queries if it doesn't exist
+	schema := `
+	CREATE TABLE IF NOT EXISTS saved_queries (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT UNIQUE NOT NULL,
+		query TEXT NOT NULL,
+		location TEXT,
+		source TEXT,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+	`
+	_, err := DB.Exec(schema)
+	if err != nil {
+		return err
+	}
+
+	// Insert or replace
+	insertQuery := `INSERT OR REPLACE INTO saved_queries (name, query, location, source) VALUES (?, ?, ?, ?)`
+	_, err = DB.Exec(insertQuery, name, query, location, source)
+	return err
+}
+
+// GetSavedQueries retrieves all saved search queries
+func GetSavedQueries() ([]map[string]interface{}, error) {
+	query := `SELECT name, query, location, source, created_at FROM saved_queries ORDER BY created_at DESC`
+	rows, err := DB.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	results := []map[string]interface{}{}
+	for rows.Next() {
+		var name, query, location, source string
+		var createdAt time.Time
+		err := rows.Scan(&name, &query, &location, &source, &createdAt)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, map[string]interface{}{
+			"name":       name,
+			"query":      query,
+			"location":   location,
+			"source":     source,
+			"created_at": createdAt,
 		})
 	}
 	return results, nil

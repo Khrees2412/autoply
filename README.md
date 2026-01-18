@@ -56,19 +56,37 @@ autoply config set --key ai_provider --value anthropic
 autoply config set --key anthropic_key --value sk-ant-your-api-key
 ```
 
+### 2.5. Configure Job Board Credentials (Optional)
+
+For automated job scraping from LinkedIn, configure your credentials:
+
+```bash
+autoply config set --key linkedin_email --value your-email@example.com
+autoply config set --key linkedin_password --value your-password
+```
+
+**Note**: Credentials are stored in `~/.autoply/config.yaml`. Keep this file secure!
+
 ### 3. Add a Resume
 
 ```bash
 autoply resume add ~/Documents/resume.pdf --default
 ```
 
-### 4. Add Jobs
+### 4. Search and Add Jobs
 
 ```bash
-# From URL (attempts to auto-parse)
-autoply job add --url https://jobs.lever.co/company/job-id
+# Search jobs from all sources (LinkedIn, Indeed, etc.)
+autoply search --query "software engineer" --location "remote"
 
-# Manual entry
+# Search from a specific source
+autoply search --query "backend developer" --location "San Francisco" --source linkedin
+
+# Search with auto-matching (only shows high-scoring jobs)
+autoply search --query "frontend" --auto-match
+
+# Or manually add jobs
+autoply job add --url https://jobs.lever.co/company/job-id
 autoply job add --title "Software Engineer" --company "Acme Inc" --location "Remote"
 ```
 

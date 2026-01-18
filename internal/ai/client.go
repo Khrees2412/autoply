@@ -206,3 +206,188 @@ func generateWithAnthropic(job *models.Job, user *models.User, skills []*models.
 
 	return strings.TrimSpace(text), nil
 }
+
+// TailorResume generates a tailored resume for a specific job
+func TailorResume(resume *models.Resume, job *models.Job, user *models.User) (string, error) {
+	provider := config.AppConfig.AIProvider
+	
+	switch provider {
+	case "openai":
+		return tailorWithOpenAI(resume, job, user)
+	case "anthropic":
+		return tailorWithAnthropic(resume, job, user)
+	default:
+		return "", fmt.Errorf("unsupported AI provider: %s", provider)
+	}
+}
+
+// buildTailorPrompt creates the prompt for resume tailoring
+func buildTailorPrompt(resume *models.Resume, job *models.Job, user *models.User) string {
+	prompt := fmt.Sprintf(`Optimize the following resume for this specific job posting.
+
+Job Details:
+- Title: %s
+- Company: %s
+- Location: %s
+- Description: %s
+
+Current Resume:
+%s
+
+Applicant Information:
+- Name: %s
+- Email: %s
+- Location: %s
+
+Instructions:
+1. Highlight relevant experience and skills that match the job requirements
+2. Add missing keywords from the job description naturally
+3. Reorder sections to emphasize most relevant qualifications
+4. Keep the resume professional and truthful
+5. Maintain the original structure but optimize content
+6. Do not fabricate experience or skills
+
+Return the optimized resume content.`,
+		job.Title,
+		job.Company,
+		job.Location,
+		job.Description,
+		resume.ContentText,
+		user.Name,
+		user.Email,
+		user.Location,
+	)
+
+	return prompt
+}
+
+// tailorWithOpenAI tailors a resume using OpenAI
+func tailorWithOpenAI(resume *models.Resume, job *models.Job, user *models.User) (string, error) {
+	apiKey := config.AppConfig.OpenAIKey
+	if apiKey == "" {
+		return "", fmt.Errorf("OpenAI API key not configured")
+	}
+
+	prompt := buildTailorPrompt(resume, job, user)
+	model := config.AppConfig.DefaultModel
+	if model == "" {
+		model = "gpt-4"
+	}
+
+	reqBody := map[string]interface{}{
+		"model": model,
+		"messages": []map[string]string{
+			{"role": "user", "content": prompt},
+		},
+		"temperature": 0.7,
+		"max_tokens":  2000,
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", err
+	}
+
+	req, err := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return "", err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("OpenAI API error: %s", string(body))
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return "", err
+	}
+
+	choices, ok := result["choices"].([]interface{})
+	if !ok || len(choices) == 0 {
+		return "", fmt.Errorf("unexpected response format from OpenAI")
+	}
+
+	choice := choices[0].(map[string]interface{})
+	message := choice["message"].(map[string]interface{})
+	content := message["content"].(string)
+
+	return strings.TrimSpace(content), nil
+}
+
+// tailorWithAnthropic tailors a resume using Anthropic
+func tailorWithAnthropic(resume *models.Resume, job *models.Job, user *models.User) (string, error) {
+	apiKey := config.AppConfig.AnthropicKey
+	if apiKey == "" {
+		return "", fmt.Errorf("Anthropic API key not configured")
+	}
+
+	prompt := buildTailorPrompt(resume, job, user)
+
+	reqBody := map[string]interface{}{
+		"model":      "claude-3-5-sonnet-20241022",
+		"max_tokens": 2048,
+		"messages": []map[string]string{
+			{"role": "user", "content": prompt},
+		},
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", err
+	}
+
+	req, err := http.NewRequest("POST", "https://api.anthropic.com/v1/messages", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return "", err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-api-key", apiKey)
+	req.Header.Set("anthropic-version", "2023-06-01")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("Anthropic API error: %s", string(body))
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return "", err
+	}
+
+	content, ok := result["content"].([]interface{})
+	if !ok || len(content) == 0 {
+		return "", fmt.Errorf("unexpected response format from Anthropic")
+	}
+
+	contentBlock := content[0].(map[string]interface{})
+	text := contentBlock["text"].(string)
+
+	return strings.TrimSpace(text), nil
+}

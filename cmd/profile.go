@@ -165,6 +165,78 @@ var showProfileCmd = &cobra.Command{
 	},
 }
 
+var editProfileCmd = &cobra.Command{
+	Use:   "edit",
+	Short: "Interactively edit your profile",
+	Run: func(cmd *cobra.Command, args []string) {
+		user, err := database.GetUser()
+		if err != nil || user == nil {
+			fmt.Println("No profile found. Run 'autoply init' to create one.")
+			return
+		}
+
+		fmt.Println(titleStyle.Render("Edit Profile"))
+		fmt.Println("Press Enter to keep current value, or type a new value")
+
+		reader := bufio.NewReader(os.Stdin)
+
+		// Name
+		fmt.Printf("%s [%s]: ", labelStyle.Render("Full Name"), user.Name)
+		name, _ := reader.ReadString('\n')
+		name = strings.TrimSpace(name)
+		if name != "" {
+			user.Name = name
+		}
+
+		// Email
+		fmt.Printf("%s [%s]: ", labelStyle.Render("Email"), user.Email)
+		email, _ := reader.ReadString('\n')
+		email = strings.TrimSpace(email)
+		if email != "" {
+			user.Email = email
+		}
+
+		// Phone
+		fmt.Printf("%s [%s]: ", labelStyle.Render("Phone"), user.Phone)
+		phone, _ := reader.ReadString('\n')
+		phone = strings.TrimSpace(phone)
+		if phone != "" {
+			user.Phone = phone
+		}
+
+		// Location
+		fmt.Printf("%s [%s]: ", labelStyle.Render("Location"), user.Location)
+		location, _ := reader.ReadString('\n')
+		location = strings.TrimSpace(location)
+		if location != "" {
+			user.Location = location
+		}
+
+		// LinkedIn
+		fmt.Printf("%s [%s]: ", labelStyle.Render("LinkedIn URL"), user.LinkedInURL)
+		linkedin, _ := reader.ReadString('\n')
+		linkedin = strings.TrimSpace(linkedin)
+		if linkedin != "" {
+			user.LinkedInURL = linkedin
+		}
+
+		// GitHub
+		fmt.Printf("%s [%s]: ", labelStyle.Render("GitHub URL"), user.GitHubURL)
+		github, _ := reader.ReadString('\n')
+		github = strings.TrimSpace(github)
+		if github != "" {
+			user.GitHubURL = github
+		}
+
+		if err := database.UpdateUser(user); err != nil {
+			fmt.Fprintf(os.Stderr, "Error updating profile: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Println("\n✓ Profile updated successfully!")
+	},
+}
+
 var setProfileCmd = &cobra.Command{
 	Use:   "set",
 	Short: "Update a profile field",
@@ -230,6 +302,7 @@ func init() {
 	rootCmd.AddCommand(profileCmd)
 	rootCmd.AddCommand(initCmd)
 	profileCmd.AddCommand(showProfileCmd)
+	profileCmd.AddCommand(editProfileCmd)
 	profileCmd.AddCommand(setProfileCmd)
 
 	// Flags for set command
