@@ -35,6 +35,19 @@ var showConfigCmd = &cobra.Command{
 		} else {
 			fmt.Printf("%s %s\n", labelStyle.Render("Anthropic Key:"), "✗ Not configured")
 		}
+		
+		// Show LinkedIn credentials status
+		if config.AppConfig.LinkedInEmail != "" {
+			fmt.Printf("%s %s\n", labelStyle.Render("LinkedIn Email:"), "✓ Configured")
+		} else {
+			fmt.Printf("%s %s\n", labelStyle.Render("LinkedIn Email:"), "✗ Not configured")
+		}
+		
+		if config.AppConfig.LinkedInPassword != "" {
+			fmt.Printf("%s %s\n", labelStyle.Render("LinkedIn Password:"), "✓ Configured")
+		} else {
+			fmt.Printf("%s %s\n", labelStyle.Render("LinkedIn Password:"), "✗ Not configured")
+		}
 	},
 }
 
@@ -43,7 +56,9 @@ var setConfigCmd = &cobra.Command{
 	Short: "Update a configuration value",
 	Example: `  autoply config set --key openai_key --value sk-...
   autoply config set --key ai_provider --value anthropic
-  autoply config set --key default_model --value gpt-4o`,
+  autoply config set --key default_model --value gpt-4o
+  autoply config set --key linkedin_email --value your-email@example.com
+  autoply config set --key linkedin_password --value your-password`,
 	Run: func(cmd *cobra.Command, args []string) {
 		key, _ := cmd.Flags().GetString("key")
 		value, _ := cmd.Flags().GetString("value")
@@ -54,7 +69,7 @@ var setConfigCmd = &cobra.Command{
 		}
 
 		// Validate key
-		validKeys := []string{"openai_key", "anthropic_key", "ai_provider", "default_model"}
+		validKeys := []string{"openai_key", "anthropic_key", "ai_provider", "default_model", "linkedin_email", "linkedin_password"}
 		valid := false
 		for _, k := range validKeys {
 			if k == key {

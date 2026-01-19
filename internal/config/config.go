@@ -10,12 +10,14 @@ import (
 
 // Config holds the application configuration
 type Config struct {
-	OpenAIKey     string `mapstructure:"openai_key"`
-	AnthropicKey  string `mapstructure:"anthropic_key"`
-	AIProvider    string `mapstructure:"ai_provider"` // openai, anthropic
-	DefaultModel  string `mapstructure:"default_model"`
+	OpenAIKey    string `mapstructure:"openai_key"`
+	AnthropicKey string `mapstructure:"anthropic_key"`
+	AIProvider   string `mapstructure:"ai_provider"` // openai, anthropic, ollama, lmstudio
+	DefaultModel string `mapstructure:"default_model"`
+	OllamaURL    string `mapstructure:"ollama_url"`
+	LMStudioURL  string `mapstructure:"lmstudio_url"`
 	// Job board credentials
-	LinkedInEmail string `mapstructure:"linkedin_email"`
+	LinkedInEmail    string `mapstructure:"linkedin_email"`
 	LinkedInPassword string `mapstructure:"linkedin_password"`
 }
 
@@ -47,8 +49,10 @@ func Initialize() error {
 	viper.SetConfigType("yaml")
 
 	// Set defaults
-	viper.SetDefault("ai_provider", "openai")
-	viper.SetDefault("default_model", "gpt-4")
+	viper.SetDefault("ai_provider", "ollama")
+	viper.SetDefault("default_model", "llama3.2")
+	viper.SetDefault("ollama_url", "http://localhost:11434")
+	viper.SetDefault("lmstudio_url", "http://localhost:1234")
 	viper.SetDefault("openai_key", "")
 	viper.SetDefault("anthropic_key", "")
 	viper.SetDefault("linkedin_email", "")
@@ -71,9 +75,11 @@ func Initialize() error {
 // createDefaultConfig creates a default config file
 func createDefaultConfig(path string) error {
 	defaultConfig := `# Autoply Configuration
-# AI Provider: openai or anthropic
-ai_provider: openai
-default_model: gpt-4
+# AI Provider: openai, anthropic, ollama, lmstudio
+ai_provider: ollama
+default_model: llama3.2
+ollama_url: http://localhost:11434
+lmstudio_url: http://localhost:1234
 
 # API Keys (keep this file secure!)
 openai_key: ""

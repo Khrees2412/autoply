@@ -198,5 +198,5 @@ func init() {
 	searchCmd.Flags().String("location", "", "Job location")
 	searchCmd.Flags().Bool("auto-match", false, "Only show high-matching jobs")
 	searchCmd.Flags().String("save-query", "", "Save this search query with a name")
-	searchCmd.Flags().String("source", "", "Job board source (linkedin, indeed, greenhouse, lever)")
+	searchCmd.Flags().String("source", "", "Job board source (linkedin, startup.jobs, greenhouse, lever)")
 }
