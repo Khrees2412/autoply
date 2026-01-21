@@ -112,7 +112,8 @@ func displayJobDetails(job *models.Job, reader *bufio.Reader) {
 			}
 			resume, _ := database.GetDefaultResume()
 			if resume != nil {
-				app.ResumeID = resume.ID
+				id := resume.ID
+				app.ResumeID = &id
 			}
 			if err := database.CreateApplication(app); err != nil {
 				fmt.Printf("Error: %v\n", err)

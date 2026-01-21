@@ -64,12 +64,12 @@ type Job struct {
 type Application struct {
 	ID           int       `json:"id"`
 	JobID        int       `json:"job_id"`
-	ResumeID     int       `json:"resume_id"`
+	ResumeID     *int      `json:"resume_id"` // nullable - resume is optional
 	CoverLetter  string    `json:"cover_letter"`
 	Status       string    `json:"status"` // pending, applied, interview, rejected, offer
 	AppliedAt    time.Time `json:"applied_at"`
 	Notes        string    `json:"notes"`
-	FollowUpDate *time.Time `json:"follow_up_date"`
+	FollowUpDate *time.Time `json:"follow_up_date"` // nullable - follow-up date is optional
 }
 
 // CoverLetter represents a generated cover letter

@@ -1,5 +1,7 @@
 # Binaries
 autoply
+autoply_*
+test_build
 *.exe
 *.exe~
 *.dll

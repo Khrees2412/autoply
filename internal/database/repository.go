@@ -207,7 +207,8 @@ func GetAllApplications() ([]*models.Application, error) {
 			return nil, err
 		}
 		if resumeID.Valid {
-			app.ResumeID = int(resumeID.Int64)
+			id := int(resumeID.Int64)
+			app.ResumeID = &id
 		}
 		apps = append(apps, app)
 	}
@@ -234,7 +235,8 @@ func GetApplicationByJobID(jobID int) (*models.Application, error) {
 		return nil, err
 	}
 	if resumeID.Valid {
-		app.ResumeID = int(resumeID.Int64)
+		id := int(resumeID.Int64)
+		app.ResumeID = &id
 	}
 	return app, nil
 }

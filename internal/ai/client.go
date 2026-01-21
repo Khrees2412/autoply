@@ -2,29 +2,31 @@ package ai
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/khrees2412/autoply/internal/config"
 	"github.com/khrees2412/autoply/pkg/models"
 )
 
 // GenerateCoverLetter generates a cover letter for a job using AI
-func GenerateCoverLetter(job *models.Job, user *models.User, skills []*models.Skill, experiences []*models.Experience) (string, error) {
+func GenerateCoverLetter(ctx context.Context, job *models.Job, user *models.User, skills []*models.Skill, experiences []*models.Experience) (string, error) {
 	provider := config.AppConfig.AIProvider
 
 	switch provider {
 	case "openai":
-		return generateWithOpenAI(job, user, skills, experiences)
+		return generateWithOpenAI(ctx, job, user, skills, experiences)
 	case "anthropic":
-		return generateWithAnthropic(job, user, skills, experiences)
+		return generateWithAnthropic(ctx, job, user, skills, experiences)
 	case "ollama":
-		return generateWithOllama(job, user, skills, experiences)
+		return generateWithOllama(ctx, job, user, skills, experiences)
 	case "lmstudio":
-		return generateWithLMStudio(job, user, skills, experiences)
+		return generateWithLMStudio(ctx, job, user, skills, experiences)
 	default:
 		return "", fmt.Errorf("unsupported AI provider: %s", provider)
 	}
@@ -81,7 +83,7 @@ Return only the cover letter text, no additional commentary.`,
 }
 
 // generateWithOpenAI generates a cover letter using OpenAI API
-func generateWithOpenAI(job *models.Job, user *models.User, skills []*models.Skill, experiences []*models.Experience) (string, error) {
+func generateWithOpenAI(ctx context.Context, job *models.Job, user *models.User, skills []*models.Skill, experiences []*models.Experience) (string, error) {
 	apiKey := config.AppConfig.OpenAIKey
 	if apiKey == "" {
 		return "", fmt.Errorf("OpenAI API key not configured. Run: autoply config set --key openai_key --value YOUR_KEY")
@@ -107,7 +109,7 @@ func generateWithOpenAI(job *models.Job, user *models.User, skills []*models.Ski
 		return "", err
 	}
 
-	req, err := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions", bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.openai.com/v1/chat/completions", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return "", err
 	}
@@ -115,7 +117,7 @@ func generateWithOpenAI(job *models.Job, user *models.User, skills []*models.Ski
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 
-	client := &http.Client{}
+	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
@@ -149,7 +151,7 @@ func generateWithOpenAI(job *models.Job, user *models.User, skills []*models.Ski
 }
 
 // generateWithAnthropic generates a cover letter using Anthropic API
-func generateWithAnthropic(job *models.Job, user *models.User, skills []*models.Skill, experiences []*models.Experience) (string, error) {
+func generateWithAnthropic(ctx context.Context, job *models.Job, user *models.User, skills []*models.Skill, experiences []*models.Experience) (string, error) {
 	apiKey := config.AppConfig.AnthropicKey
 	if apiKey == "" {
 		return "", fmt.Errorf("Anthropic API key not configured. Run: autoply config set --key anthropic_key --value YOUR_KEY")
@@ -170,7 +172,7 @@ func generateWithAnthropic(job *models.Job, user *models.User, skills []*models.
 		return "", err
 	}
 
-	req, err := http.NewRequest("POST", "https://api.anthropic.com/v1/messages", bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.anthropic.com/v1/messages", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return "", err
 	}
@@ -179,7 +181,7 @@ func generateWithAnthropic(job *models.Job, user *models.User, skills []*models.
 	req.Header.Set("x-api-key", apiKey)
 	req.Header.Set("anthropic-version", "2023-06-01")
 
-	client := &http.Client{}
+	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
@@ -400,7 +402,7 @@ func tailorWithAnthropic(resume *models.Resume, job *models.Job, user *models.Us
 	return strings.TrimSpace(text), nil
 }
 // generateWithOllama generates a cover letter using Ollama API
-func generateWithOllama(job *models.Job, user *models.User, skills []*models.Skill, experiences []*models.Experience) (string, error) {
+func generateWithOllama(ctx context.Context, job *models.Job, user *models.User, skills []*models.Skill, experiences []*models.Experience) (string, error) {
 	url := config.AppConfig.OllamaURL
 	if url == "" {
 		url = "http://localhost:11434"
@@ -423,14 +425,14 @@ func generateWithOllama(job *models.Job, user *models.User, skills []*models.Ski
 		return "", err
 	}
 
-	req, err := http.NewRequest("POST", url+"/api/generate", bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, "POST", url+"/api/generate", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return "", err
 	}
 
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
+	client := &http.Client{Timeout: 2 * time.Minute}
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
@@ -460,7 +462,7 @@ func generateWithOllama(job *models.Job, user *models.User, skills []*models.Ski
 }
 
 // generateWithLMStudio generates a cover letter using LMStudio API
-func generateWithLMStudio(job *models.Job, user *models.User, skills []*models.Skill, experiences []*models.Experience) (string, error) {
+func generateWithLMStudio(ctx context.Context, job *models.Job, user *models.User, skills []*models.Skill, experiences []*models.Experience) (string, error) {
 	url := config.AppConfig.LMStudioURL
 	if url == "" {
 		url = "http://localhost:1234"
@@ -486,14 +488,14 @@ func generateWithLMStudio(job *models.Job, user *models.User, skills []*models.S
 		return "", err
 	}
 
-	req, err := http.NewRequest("POST", url+"/v1/chat/completions", bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, "POST", url+"/v1/chat/completions", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return "", err
 	}
 
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
+	client := &http.Client{Timeout: 2 * time.Minute}
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", err

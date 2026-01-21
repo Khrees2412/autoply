@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/khrees2412/autoply/internal/ai"
 	"github.com/khrees2412/autoply/internal/database"
@@ -22,11 +21,10 @@ var generateCoverLetterCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	Example: `  autoply generate cover-letter 1
   autoply generate cover-letter 5 --save`,
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		var jobID int
 		if _, err := fmt.Sscanf(args[0], "%d", &jobID); err != nil {
-			fmt.Println("Invalid job ID. Must be a number.")
-			return
+			return fmt.Errorf("invalid job ID: must be a number")
 		}
 
 		save, _ := cmd.Flags().GetBool("save")
@@ -34,41 +32,44 @@ var generateCoverLetterCmd = &cobra.Command{
 		// Get job details
 		job, err := database.GetJob(jobID)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error fetching job: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("fetch job: %w", err)
 		}
 
 		// Get user profile
 		user, err := database.GetUser()
-		if err != nil || user == nil {
-			fmt.Println("No profile found. Run 'autoply init' to create your profile first.")
-			return
+		if err != nil {
+			return fmt.Errorf("fetch user profile: %w", err)
+		}
+		if user == nil {
+			cmd.Println("No profile found. Run 'autoply init' to create your profile first.")
+			return nil
 		}
 
-		// Get user skills and experience
+		// Get user skills and experience (warn on error, continue with empty)
 		skills, err := database.GetUserSkills(user.ID)
 		if err != nil {
+			cmd.Printf("Warning: could not fetch skills: %v\n", err)
 			skills = []*models.Skill{}
 		}
 
 		experiences, err := database.GetUserExperiences(user.ID)
 		if err != nil {
+			cmd.Printf("Warning: could not fetch experiences: %v\n", err)
 			experiences = []*models.Experience{}
 		}
 
-		fmt.Println("Generating cover letter with AI...")
-		fmt.Printf("Job: %s at %s\n\n", job.Title, job.Company)
+		cmd.Println("Generating cover letter with AI...")
+		cmd.Printf("Job: %s at %s\n\n", job.Title, job.Company)
 
-		// Generate cover letter
-		coverLetter, err := ai.GenerateCoverLetter(job, user, skills, experiences)
+		// Generate cover letter (pass context for cancellation support)
+		coverLetter, err := ai.GenerateCoverLetter(cmd.Context(), job, user, skills, experiences)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error generating cover letter: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("generate cover letter: %w", err)
 		}
 
 		// Display the cover letter
-		fmt.Println(titleStyle.Render("Generated Cover Letter"))
-		fmt.Println(coverLetter)
+		cmd.Println(titleStyle.Render("Generated Cover Letter"))
+		cmd.Println(coverLetter)
 
 		// Save to database if requested
 		if save {
@@ -78,13 +79,13 @@ var generateCoverLetterCmd = &cobra.Command{
 				IsSent:  false,
 			}
 			if err := database.CreateCoverLetter(cl); err != nil {
-				fmt.Fprintf(os.Stderr, "\nError saving cover letter: %v\n", err)
-				os.Exit(1)
+				return fmt.Errorf("save cover letter: %w", err)
 			}
-			fmt.Println("\n✓ Cover letter saved to database")
+			cmd.Println("\n✓ Cover letter saved to database")
 		} else {
-			fmt.Println("\nTo save this cover letter, run with --save flag")
+			cmd.Println("\nTo save this cover letter, run with --save flag")
 		}
+		return nil
 	},
 }
 

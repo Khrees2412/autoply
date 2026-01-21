@@ -1,56 +1,97 @@
-package database
+package app
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
+	"github.com/khrees2412/autoply/internal/config"
 	_ "github.com/mattn/go-sqlite3"
 )
 
-var DB *sql.DB
+// App is the dependency container for the CLI application
+type App struct {
+	DB         *sql.DB
+	Config     *config.Config
+	HTTPClient *http.Client
+}
 
-// Initialize creates and opens the SQLite database
-func Initialize() error {
+// NewApp initializes and returns a new App instance
+func NewApp(ctx context.Context) (*App, error) {
+	// Initialize config
+	if err := config.Initialize(); err != nil {
+		return nil, fmt.Errorf("failed to initialize config: %w", err)
+	}
+
+	// Open database with proper pragmas
+	db, err := initializeDatabase()
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize database: %w", err)
+	}
+
+	// Verify database connection
+	if err := db.Ping(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to ping database: %w", err)
+	}
+
+	// Create HTTP client with timeout
+	httpClient := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	return &App{
+		DB:         db,
+		Config:     config.AppConfig,
+		HTTPClient: httpClient,
+	}, nil
+}
+
+// Close closes all resources
+func (a *App) Close() error {
+	if a.DB != nil {
+		return a.DB.Close()
+	}
+	return nil
+}
+
+// initializeDatabase creates and opens the SQLite database with proper settings
+func initializeDatabase() (*sql.DB, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return fmt.Errorf("failed to get home directory: %w", err)
+		return nil, fmt.Errorf("failed to get home directory: %w", err)
 	}
 
 	// Create .autoply directory if it doesn't exist
 	autoplyDir := filepath.Join(homeDir, ".autoply")
 	if err := os.MkdirAll(autoplyDir, 0755); err != nil {
-		return fmt.Errorf("failed to create autoply directory: %w", err)
+		return nil, fmt.Errorf("failed to create autoply directory: %w", err)
 	}
 
 	dbPath := filepath.Join(autoplyDir, "autoply.db")
-	
-	db, err := sql.Open("sqlite3", dbPath)
-	if err != nil {
-		return fmt.Errorf("failed to open database: %w", err)
-	}
 
-	DB = db
+	// Open with DSN options for SQLite pragmas
+	dsn := fmt.Sprintf("file:%s?_foreign_keys=on&_busy_timeout=5000&_journal_mode=WAL", dbPath)
+	db, err := sql.Open("sqlite3", dsn)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open database: %w", err)
+	}
 
 	// Run migrations
-	if err := RunMigrations(DB); err != nil {
-		return fmt.Errorf("failed to run migrations: %w", err)
+	if err := runMigrations(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to run migrations: %w", err)
 	}
 
-	return nil
+	return db, nil
 }
 
-// Close closes the database connection
-func Close() error {
-	if DB != nil {
-		return DB.Close()
-	}
-	return nil
-}
-
-// RunMigrations creates all necessary tables
-func RunMigrations(db *sql.DB) error {
+// runMigrations creates all necessary tables
+func runMigrations(db *sql.DB) error {
 	schema := `
 	CREATE TABLE IF NOT EXISTS users (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -104,7 +145,8 @@ func RunMigrations(db *sql.DB) error {
 		source TEXT DEFAULT 'manual',
 		posted_date DATE,
 		scraped_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-		match_score REAL DEFAULT 0
+		match_score REAL DEFAULT 0,
+		CHECK(source IN ('manual', 'linkedin', 'indeed', 'url', 'greenhouse', 'lever'))
 	);
 
 	CREATE TABLE IF NOT EXISTS applications (
@@ -117,7 +159,8 @@ func RunMigrations(db *sql.DB) error {
 		notes TEXT,
 		follow_up_date DATE,
 		FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE,
-		FOREIGN KEY (resume_id) REFERENCES resumes(id) ON DELETE SET NULL
+		FOREIGN KEY (resume_id) REFERENCES resumes(id) ON DELETE SET NULL,
+		CHECK(status IN ('pending', 'applied', 'interview', 'rejected', 'offer', 'accepted'))
 	);
 
 	CREATE TABLE IF NOT EXISTS cover_letters (

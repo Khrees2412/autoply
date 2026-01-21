@@ -1,16 +1,19 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"regexp"
 	"strings"
 
+	"github.com/khrees2412/autoply/internal/app"
 	"github.com/khrees2412/autoply/internal/database"
 	"github.com/khrees2412/autoply/pkg/models"
 	"github.com/spf13/cobra"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 var jobCmd = &cobra.Command{
@@ -24,7 +27,13 @@ var addJobCmd = &cobra.Command{
 	Short: "Add a job posting",
 	Example: `  autoply job add --url https://company.com/jobs/123
   autoply job add --title "Software Engineer" --company "Acme Inc" --location "Remote"`,
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
+		ctx := cmd.Context()
+		application := app.GetAppFromContext(ctx)
+		if application == nil {
+			return fmt.Errorf("application not initialized")
+		}
+
 		url, _ := cmd.Flags().GetString("url")
 		title, _ := cmd.Flags().GetString("title")
 		company, _ := cmd.Flags().GetString("company")
@@ -33,32 +42,31 @@ var addJobCmd = &cobra.Command{
 
 		if url != "" {
 			// Try to parse job from URL
-			fmt.Printf("Fetching job details from %s...\n", url)
-			jobData, err := parseJobFromURL(url)
+			cmd.Printf("Fetching job details from %s...\n", url)
+			jobData, err := parseJobFromURL(ctx, application.HTTPClient, url)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error parsing job URL: %v\n", err)
-				fmt.Println("You can manually provide job details using --title, --company, etc.")
-				return
-			}
-			
-			jobData.URL = url
-			if err := database.CreateJob(jobData); err != nil {
-				if strings.Contains(err.Error(), "UNIQUE constraint failed") {
-					fmt.Println("This job has already been added.")
-					return
+				cmd.Printf("Warning: could not parse job URL: %v\n", err)
+				cmd.Println("You can manually provide job details using --title, --company, etc.")
+				if title == "" || company == "" {
+					return fmt.Errorf("job title and company required when URL parsing fails")
 				}
-				fmt.Fprintf(os.Stderr, "Error saving job: %v\n", err)
-				os.Exit(1)
+			} else {
+				jobData.URL = url
+				if err := database.CreateJob(jobData); err != nil {
+					if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+						cmd.Println("This job has already been added.")
+						return nil
+					}
+					return fmt.Errorf("save job: %w", err)
+				}
+				cmd.Printf("✓ Job added: %s at %s (ID: %d)\n", jobData.Title, jobData.Company, jobData.ID)
+				return nil
 			}
-
-			fmt.Printf("✓ Job added: %s at %s (ID: %d)\n", jobData.Title, jobData.Company, jobData.ID)
-			return
 		}
 
 		// Manual entry
 		if title == "" || company == "" {
-			fmt.Println("Either --url or both --title and --company are required")
-			return
+			return fmt.Errorf("either --url or both --title and --company are required")
 		}
 
 		job := &models.Job{
@@ -70,42 +78,42 @@ var addJobCmd = &cobra.Command{
 		}
 
 		if err := database.CreateJob(job); err != nil {
-			fmt.Fprintf(os.Stderr, "Error saving job: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("save job: %w", err)
 		}
 
-		fmt.Printf("✓ Job added: %s at %s (ID: %d)\n", job.Title, job.Company, job.ID)
+		cmd.Printf("✓ Job added: %s at %s (ID: %d)\n", job.Title, job.Company, job.ID)
+		return nil
 	},
 }
 
 var listJobsCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all saved jobs",
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		jobs, err := database.GetAllJobs()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error fetching jobs: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("fetch jobs: %w", err)
 		}
 
 		if len(jobs) == 0 {
-			fmt.Println("No jobs found. Add jobs with 'autoply job add --url URL'")
-			return
+			cmd.Println("No jobs found. Add jobs with 'autoply job add --url URL'")
+			return nil
 		}
 
-		fmt.Println(titleStyle.Render("Saved Jobs"))
+		cmd.Println(titleStyle.Render("Saved Jobs"))
 		for i, job := range jobs {
-			fmt.Printf("\n%s. %s\n", labelStyle.Render(fmt.Sprintf("%d", i+1)), job.Title)
-			fmt.Printf("   %s %s\n", labelStyle.Render("Company:"), job.Company)
+			cmd.Printf("\n%s. %s\n", labelStyle.Render(fmt.Sprintf("%d", i+1)), job.Title)
+			cmd.Printf("   %s %s\n", labelStyle.Render("Company:"), job.Company)
 			if job.Location != "" {
-				fmt.Printf("   %s %s\n", labelStyle.Render("Location:"), job.Location)
+				cmd.Printf("   %s %s\n", labelStyle.Render("Location:"), job.Location)
 			}
-			fmt.Printf("   %s %d\n", labelStyle.Render("ID:"), job.ID)
+			cmd.Printf("   %s %d\n", labelStyle.Render("ID:"), job.ID)
 			if job.URL != "" {
-				fmt.Printf("   %s %s\n", labelStyle.Render("URL:"), job.URL)
+				cmd.Printf("   %s %s\n", labelStyle.Render("URL:"), job.URL)
 			}
-			fmt.Printf("   %s %s\n", labelStyle.Render("Added:"), job.ScrapedAt.Format("Jan 2, 2006"))
+			cmd.Printf("   %s %s\n", labelStyle.Render("Added:"), job.ScrapedAt.Format("Jan 2, 2006"))
 		}
+		return nil
 	},
 }
 
@@ -113,44 +121,43 @@ var showJobCmd = &cobra.Command{
 	Use:   "show <job-id>",
 	Short: "Show details of a specific job",
 	Args:  cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		var jobID int
 		if _, err := fmt.Sscanf(args[0], "%d", &jobID); err != nil {
-			fmt.Println("Invalid job ID. Must be a number.")
-			return
+			return fmt.Errorf("invalid job ID: must be a number")
 		}
 
 		job, err := database.GetJob(jobID)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error fetching job: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("fetch job: %w", err)
 		}
 
-		fmt.Println(titleStyle.Render(job.Title))
-		fmt.Printf("%s %s\n", labelStyle.Render("Company:"), job.Company)
+		cmd.Println(titleStyle.Render(job.Title))
+		cmd.Printf("%s %s\n", labelStyle.Render("Company:"), job.Company)
 		if job.Location != "" {
-			fmt.Printf("%s %s\n", labelStyle.Render("Location:"), job.Location)
+			cmd.Printf("%s %s\n", labelStyle.Render("Location:"), job.Location)
 		}
 		if job.SalaryRange != "" {
-			fmt.Printf("%s %s\n", labelStyle.Render("Salary:"), job.SalaryRange)
+			cmd.Printf("%s %s\n", labelStyle.Render("Salary:"), job.SalaryRange)
 		}
 		if job.URL != "" {
-			fmt.Printf("%s %s\n", labelStyle.Render("URL:"), job.URL)
+			cmd.Printf("%s %s\n", labelStyle.Render("URL:"), job.URL)
 		}
-		fmt.Printf("%s %s\n", labelStyle.Render("Source:"), job.Source)
-		fmt.Printf("%s %s\n", labelStyle.Render("Added:"), job.ScrapedAt.Format("Jan 2, 2006 15:04"))
+		cmd.Printf("%s %s\n", labelStyle.Render("Source:"), job.Source)
+		cmd.Printf("%s %s\n", labelStyle.Render("Added:"), job.ScrapedAt.Format("Jan 2, 2006 15:04"))
 
 		if job.Description != "" {
-			fmt.Println(labelStyle.Render("\nDescription:"))
-			fmt.Println(job.Description)
+			cmd.Println(labelStyle.Render("\nDescription:"))
+			cmd.Println(job.Description)
 		}
 
 		// Check if already applied
-		app, _ := database.GetApplicationByJobID(jobID)
-		if app != nil {
-			fmt.Printf("\n%s %s\n", labelStyle.Render("Application Status:"), app.Status)
-			fmt.Printf("%s %s\n", labelStyle.Render("Applied At:"), app.AppliedAt.Format("Jan 2, 2006"))
+		application, _ := database.GetApplicationByJobID(jobID)
+		if application != nil {
+			cmd.Printf("\n%s %s\n", labelStyle.Render("Application Status:"), application.Status)
+			cmd.Printf("%s %s\n", labelStyle.Render("Applied At:"), application.AppliedAt.Format("Jan 2, 2006"))
 		}
+		return nil
 	},
 }
 
@@ -158,41 +165,55 @@ var removeJobCmd = &cobra.Command{
 	Use:   "remove <job-id>",
 	Short: "Remove a job posting",
 	Args:  cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		var jobID int
 		if _, err := fmt.Sscanf(args[0], "%d", &jobID); err != nil {
-			fmt.Println("Invalid job ID. Must be a number.")
-			return
+			return fmt.Errorf("invalid job ID: must be a number")
 		}
 
 		// Check if job exists
 		job, err := database.GetJob(jobID)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Job not found\n")
-			return
+			return fmt.Errorf("job not found")
 		}
 
 		if err := database.DeleteJob(jobID); err != nil {
-			fmt.Fprintf(os.Stderr, "Error removing job: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("remove job: %w", err)
 		}
 
-		fmt.Printf("✓ Removed job: %s at %s\n", job.Title, job.Company)
+		cmd.Printf("✓ Removed job: %s at %s\n", job.Title, job.Company)
+		return nil
 	},
 }
 
 // parseJobFromURL attempts to extract job information from a URL
-func parseJobFromURL(url string) (*models.Job, error) {
-	// Fetch the page
-	resp, err := http.Get(url)
+func parseJobFromURL(ctx context.Context, client *http.Client, url string) (*models.Job, error) {
+	// Create request with context
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+
+	// Set a proper user-agent (some sites block default Go UA)
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; Autoply/1.0)")
+
+	// Fetch the page
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetch URL: %w", err)
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	// Check status code
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+
+	// Limit body size to 2MB to avoid huge downloads
+	limitedBody := io.LimitReader(resp.Body, 2<<20)
+	body, err := io.ReadAll(limitedBody)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read body: %w", err)
 	}
 
 	html := string(body)
@@ -200,7 +221,7 @@ func parseJobFromURL(url string) (*models.Job, error) {
 	// Basic parsing (this is simplified - real implementation would be more robust)
 	job := &models.Job{
 		URL:    url,
-		Source: "manual",
+		Source: "url",
 	}
 
 	// Try to extract title
@@ -217,7 +238,7 @@ func parseJobFromURL(url string) (*models.Job, error) {
 		parts := strings.Split(url, "/")
 		for i, part := range parts {
 			if part == "boards" && i+1 < len(parts) {
-				job.Company = strings.Title(parts[i+1])
+				job.Company = titleCase(parts[i+1])
 				break
 			}
 		}
@@ -225,7 +246,7 @@ func parseJobFromURL(url string) (*models.Job, error) {
 		parts := strings.Split(url, "/")
 		if len(parts) > 2 {
 			company := strings.Split(parts[2], ".")[0]
-			job.Company = strings.Title(company)
+			job.Company = titleCase(company)
 		}
 	}
 
@@ -237,7 +258,7 @@ func parseJobFromURL(url string) (*models.Job, error) {
 			domain = strings.TrimPrefix(domain, "www.")
 			parts := strings.Split(domain, ".")
 			if len(parts) > 0 {
-				job.Company = strings.Title(parts[0])
+				job.Company = titleCase(parts[0])
 			}
 		}
 	}
@@ -253,6 +274,11 @@ func parseJobFromURL(url string) (*models.Job, error) {
 	}
 
 	return job, nil
+}
+
+// titleCase converts a string to title case using proper locale-aware capitalization
+func titleCase(s string) string {
+	return cases.Title(language.English).String(s)
 }
 
 func init() {
