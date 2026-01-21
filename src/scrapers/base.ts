@@ -2,6 +2,12 @@ import { chromium, type Browser, type Page, type BrowserContext } from 'playwrig
 import type { JobData, FormField, CustomQuestion, Platform } from '../types';
 import { configRepository } from '../db/repositories/config';
 
+// Random delay to mimic human behavior
+function randomDelay(min: number, max: number): Promise<void> {
+  const delay = Math.floor(Math.random() * (max - min + 1)) + min;
+  return new Promise((resolve) => setTimeout(resolve, delay));
+}
+
 export abstract class BaseScraper {
   abstract platform: Platform;
   protected browser: Browser | null = null;
@@ -12,13 +18,75 @@ export abstract class BaseScraper {
     const config = configRepository.loadAppConfig();
     this.browser = await chromium.launch({
       headless: config.browser.headless,
+      args: [
+        '--disable-blink-features=AutomationControlled',
+        '--disable-features=IsolateOrigins,site-per-process',
+      ],
     });
     this.context = await this.browser.newContext({
       userAgent:
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Macintosh; Apple Silicon Mac OS X 14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      storageState: config.browser.storageState,
+      viewport: { width: 1920, height: 1080 },
+      locale: 'en-NG',
+      timezoneId: 'Africa/Lagos',
     });
+
+    // Mask automation indicators
+    await this.context.addInitScript(() => {
+      // Remove webdriver flag
+      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+
+      // Mock plugins (real browsers have these)
+      Object.defineProperty(navigator, 'plugins', {
+        get: () => [
+          { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer' },
+          { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai' },
+          { name: 'Native Client', filename: 'internal-nacl-plugin' },
+        ],
+      });
+
+      // Mock languages
+      Object.defineProperty(navigator, 'languages', {
+        get: () => ['en-NG', 'en-GB', 'en'],
+      });
+
+      // Hide automation-related Chrome properties
+      const originalQuery = window.navigator.permissions.query;
+      window.navigator.permissions.query = (parameters: PermissionDescriptor) => {
+        if (parameters.name === 'notifications') {
+          return Promise.resolve({ state: 'prompt', onchange: null } as PermissionStatus);
+        }
+        return originalQuery(parameters);
+      };
+
+      // Mask Chrome property
+      (window as unknown as { chrome: unknown }).chrome = { runtime: {} };
+    });
+
     this.page = await this.context.newPage();
     this.page.setDefaultTimeout(config.browser.timeout);
+  }
+
+  // Add human-like delay between actions
+  protected async humanDelay(short = false): Promise<void> {
+    if (short) {
+      await randomDelay(300, 800);
+    } else {
+      await randomDelay(1000, 3000);
+    }
+  }
+
+  // Simulate human-like scrolling
+  protected async humanScroll(): Promise<void> {
+    if (!this.page) return;
+
+    const scrolls = Math.floor(Math.random() * 3) + 2; // 2-4 scrolls
+    for (let i = 0; i < scrolls; i++) {
+      const scrollAmount = Math.floor(Math.random() * 300) + 100;
+      await this.page.mouse.wheel(0, scrollAmount);
+      await randomDelay(500, 1500);
+    }
   }
 
   async cleanup(): Promise<void> {
@@ -38,7 +106,19 @@ export abstract class BaseScraper {
       await this.initialize();
       if (!this.page) throw new Error('Browser not initialized');
 
+      // Random delay before navigation
+      await this.humanDelay();
+
       await this.page.goto(url, { waitUntil: 'networkidle' });
+
+      // Simulate human behavior: mouse movement and scrolling
+      await this.humanDelay(true);
+      await this.page.mouse.move(
+        Math.random() * 500 + 100,
+        Math.random() * 300 + 100
+      );
+      await this.humanScroll();
+
       await this.waitForContent();
 
       const jobData = await this.extractJobData(url);

@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Software Engineer at Acme Corp</title>
+</head>
+<body>
+  <div id="app_body">
+    <h1 class="app-title">Software Engineer</h1>
+    <div class="company-name">Acme Corp</div>
+    <div class="location">San Francisco, CA</div>
+
+    <div id="content">
+      <h2>About the Role</h2>
+      <p>We are looking for a talented Software Engineer to join our team.</p>
+
+      <h3>Requirements:</h3>
+      <ul>
+        <li>- 3+ years of experience with JavaScript/TypeScript</li>
+        <li>- Experience with React or Vue</li>
+        <li>- Strong problem-solving skills</li>
+      </ul>
+
+      <h3>Nice to have:</h3>
+      <ul>
+        <li>- Experience with GraphQL</li>
+        <li>- Kubernetes knowledge</li>
+      </ul>
+
+      <h3>What we offer:</h3>
+      <ul>
+        <li>- Competitive salary</li>
+        <li>- Remote work options</li>
+      </ul>
+    </div>
+
+    <form>
+      <div class="custom-question" data-question="true">
+        <label for="q1">Why do you want to work at Acme Corp?</label>
+        <textarea id="q1" name="custom_q1" required></textarea>
+      </div>
+
+      <div class="custom-question" data-question="true">
+        <label for="q2">Years of experience</label>
+        <select id="q2" name="custom_q2">
+          <option value="">Select...</option>
+          <option value="0-2">0-2 years</option>
+          <option value="3-5">3-5 years</option>
+          <option value="5+">5+ years</option>
+        </select>
+      </div>
+
+      <input type="text" name="name" placeholder="Full Name" required />
+      <input type="email" name="email" placeholder="Email" required />
+      <input type="file" name="resume" />
+    </form>
+  </div>
+</body>
+</html>

@@ -157,6 +157,7 @@ export interface AppConfig {
   browser: {
     headless: boolean;
     timeout: number;
+    storageState?: string;
   };
   application: {
     autoSubmit: boolean;
@@ -173,7 +174,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     temperature: 0.7,
   },
   browser: {
-    headless: true,
+    headless: false,
     timeout: 30000,
   },
   application: {

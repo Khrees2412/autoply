@@ -6,6 +6,7 @@ import { configCommand } from './commands/config';
 import { applyCommand } from './commands/apply';
 import { generateCommand } from './commands/generate';
 import { historyCommand } from './commands/history';
+import { loginCommand } from './commands/login';
 import { closeDb } from '../db';
 
 const program = new Command();
@@ -22,6 +23,7 @@ program.addCommand(configCommand);
 program.addCommand(applyCommand);
 program.addCommand(generateCommand);
 program.addCommand(historyCommand);
+program.addCommand(loginCommand);
 
 // Cleanup on exit
 process.on('exit', () => {
