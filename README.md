@@ -8,12 +8,12 @@ Automated job application CLI - Apply to jobs with AI-generated resumes and cove
 
 ```bash
 # Clone and install dependencies
-git clone https://github.com/youruser/autoply.git
+git clone https://github.com/khrees2412/autoply.git
 cd autoply
 bun install
 
 # Install Playwright browsers (required for job scraping)
-npx playwright install chromium
+bunx playwright install chromium
 
 # Build the executable
 bun run build
