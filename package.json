@@ -1,0 +1,30 @@
+{
+  "name": "autoply",
+  "version": "1.0.0",
+  "type": "module",
+  "bin": {
+    "autoply": "./src/cli/index.ts"
+  },
+  "scripts": {
+    "dev": "bun run src/cli/index.ts",
+    "start": "bun run src/cli/index.ts",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "bun-types": "latest",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "commander": "^12.0.0",
+    "@inquirer/prompts": "^7.0.0",
+    "playwright": "^1.40.0",
+    "pdf-lib": "^1.17.0",
+    "marked": "^11.0.0",
+    "zod": "^3.22.0",
+    "chalk": "^5.3.0",
+    "ora": "^8.0.0",
+    "openai": "^4.0.0",
+    "@anthropic-ai/sdk": "^0.10.0"
+  }
+}
