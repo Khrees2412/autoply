@@ -8,7 +8,9 @@ export type Platform =
   | 'jobvite'
   | 'smartrecruiters'
   | 'pinpoint'
-  | 'teamtailor';
+  | 'teamtailor'
+  | 'workday'
+  | 'ashby';
 
 export const SUPPORTED_PLATFORMS: Record<Platform, RegExp> = {
   greenhouse: /boards\.greenhouse\.io/,
@@ -18,6 +20,8 @@ export const SUPPORTED_PLATFORMS: Record<Platform, RegExp> = {
   smartrecruiters: /jobs\.smartrecruiters\.com/,
   pinpoint: /\.pinpointhq\.com/,
   teamtailor: /\.teamtailor\.com/,
+  workday: /\.myworkdayjobs\.com|workday\.com\/.*\/job/,
+  ashby: /jobs\.ashbyhq\.com/,
 };
 
 // ============ Profile Schemas ============
@@ -127,7 +131,7 @@ export interface CustomQuestion {
 }
 
 // ============ AI Provider Types ============
-export type AIProviderType = 'openai' | 'anthropic' | 'ollama' | 'lmstudio';
+export type AIProviderType = 'openai' | 'anthropic' | 'google' | 'ollama' | 'lmstudio';
 
 export interface AIConfig {
   provider: AIProviderType;

@@ -7,6 +7,8 @@ import { JobviteScraper } from './jobvite';
 import { SmartRecruitersScraper } from './smartrecruiters';
 import { PinpointScraper } from './pinpoint';
 import { TeamtailorScraper } from './teamtailor';
+import { WorkdayScraper } from './workday';
+import { AshbyScraper } from './ashby';
 
 const scraperMap: Record<Platform, new () => BaseScraper> = {
   greenhouse: GreenhouseScraper,
@@ -16,6 +18,8 @@ const scraperMap: Record<Platform, new () => BaseScraper> = {
   smartrecruiters: SmartRecruitersScraper,
   pinpoint: PinpointScraper,
   teamtailor: TeamtailorScraper,
+  workday: WorkdayScraper,
+  ashby: AshbyScraper,
 };
 
 export function createScraper(platform: Platform): BaseScraper {
@@ -40,4 +44,6 @@ export {
   SmartRecruitersScraper,
   PinpointScraper,
   TeamtailorScraper,
+  WorkdayScraper,
+  AshbyScraper,
 };
