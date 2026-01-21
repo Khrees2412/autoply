@@ -1,17 +1,25 @@
 import type { AIProvider } from '../types';
 import type { Profile, JobData } from '../types';
 
-const COVER_LETTER_SYSTEM_PROMPT = `You are an expert cover letter writer. Your task is to create compelling, personalized cover letters that:
+const COVER_LETTER_SYSTEM_PROMPT = `You are a cover letter writer who crafts warm, human, and passionate letters. Your goal is to help the candidate stand out by showing who they truly are - not just what they can do.
 
-1. Show genuine enthusiasm for the specific role and company
-2. Connect the candidate's experience to the job requirements
-3. Demonstrate knowledge of the company (when available)
-4. Be concise (3-4 paragraphs maximum)
-5. Use a professional but personable tone
-6. Avoid generic phrases and clichés
-7. Include a clear call to action
+Writing style guidelines:
+- Write like a real person, not a corporate template
+- Lead with genuine excitement and curiosity about the role
+- Focus on impact and stories, not technical jargon or buzzwords
+- Show heart - let the candidate's passion and drive shine through
+- Subtly weave in the candidate's unique perspective as someone bringing diverse global experience
+- Keep it conversational yet professional
+- Be confident but humble, ambitious but grounded
+- 3-4 short paragraphs maximum - every sentence should earn its place
 
-Output the cover letter in clean text format, ready to be used.`;
+Avoid:
+- Stiff, formal language ("I am writing to express my interest...")
+- Listing skills or technologies - the resume does that
+- Generic flattery about the company
+- Overused phrases like "passionate about", "excited to", "leverage my skills"
+
+The best cover letters feel like the start of a conversation, not a sales pitch.`;
 
 export async function generateCoverLetter(
   provider: AIProvider,
@@ -64,13 +72,13 @@ ${jobData.requirements.slice(0, 5).map((r) => `- ${r}`).join('\n')}
 
 ---
 
-Please write a personalized cover letter that:
-1. Opens with a compelling hook about interest in the ${jobData.title} role at ${jobData.company}
-2. Highlights 2-3 specific experiences that align with the job requirements
-3. Shows enthusiasm for the company and role
-4. Ends with a professional call to action
+Write a cover letter that:
+1. Opens with something genuine - what specifically draws them to this role or company? Make it personal, not generic
+2. Tells a brief story or two that shows their impact - focus on the human side, not technical details
+3. Connects their journey and perspective to why this opportunity matters to them
+4. Closes warmly with a clear next step
 
-Keep it to 3-4 paragraphs.`;
+Remember: This person brings a unique perspective shaped by their background and experiences. Let that authenticity come through naturally - it's a strength, not something to hide. Write something that could only come from this specific person.`;
 }
 
 export async function answerApplicationQuestion(
@@ -79,12 +87,15 @@ export async function answerApplicationQuestion(
   jobData: JobData,
   question: string
 ): Promise<string> {
-  const systemPrompt = `You are helping a job applicant answer application questions.
-Provide concise, professional answers that:
-1. Are relevant to the specific role and company
-2. Draw from the candidate's actual experience
-3. Are honest and authentic
-4. Are appropriately brief unless a detailed answer is clearly needed`;
+  const systemPrompt = `You help job applicants answer application questions in a warm, authentic voice.
+
+Guidelines:
+- Sound like a real person, not a template
+- Draw from actual experiences with specific examples
+- Be honest and genuine - don't oversell
+- Keep answers focused and appropriately brief
+- Show personality and enthusiasm without being over the top
+- Avoid corporate buzzwords and jargon`;
 
   const prompt = `Based on the following candidate profile and job posting, please answer this application question:
 

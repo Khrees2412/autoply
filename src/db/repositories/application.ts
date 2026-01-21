@@ -1,5 +1,6 @@
 import { getDb } from '../index';
 import type { Application, ApplicationStatus, Platform } from '../../types';
+import type { SQLQueryBindings } from 'bun:sqlite';
 
 export interface ApplicationRow {
   id: number;
@@ -94,8 +95,8 @@ export class ApplicationRepository {
 
     query += ' ORDER BY created_at DESC';
 
-    const stmt = db.query<ApplicationRow, unknown[]>(query);
-    const rows = stmt.all(...params);
+    const stmt = db.query<ApplicationRow, SQLQueryBindings[]>(query);
+    const rows = stmt.all(...(params as SQLQueryBindings[]));
     return rows.map(rowToApplication);
   }
 
@@ -134,7 +135,7 @@ export class ApplicationRepository {
 
     if (fields.length > 0) {
       values.push(id);
-      db.run(`UPDATE applications SET ${fields.join(', ')} WHERE id = ?`, values);
+      db.run(`UPDATE applications SET ${fields.join(', ')} WHERE id = ?`, values as SQLQueryBindings[]);
     }
 
     return this.findById(id);
@@ -156,8 +157,8 @@ export class ApplicationRepository {
       params.push(filters.status);
     }
 
-    const stmt = db.query<{ count: number }, unknown[]>(query);
-    const result = stmt.get(...params);
+    const stmt = db.query<{ count: number }, SQLQueryBindings[]>(query);
+    const result = stmt.get(...(params as SQLQueryBindings[]));
     return result?.count ?? 0;
   }
 }

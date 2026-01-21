@@ -152,7 +152,7 @@ export class ProfileRepository {
     if (updates.length > 0) {
       updates.push('updated_at = CURRENT_TIMESTAMP');
       values.push(id);
-      db.run(`UPDATE profiles SET ${updates.join(', ')} WHERE id = ?`, values);
+      db.run(`UPDATE profiles SET ${updates.join(', ')} WHERE id = ?`, values as (string | number | null)[]);
     }
 
     return this.findById(id);

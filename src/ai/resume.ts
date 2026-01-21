@@ -1,16 +1,44 @@
 import type { AIProvider } from '../types';
 import type { Profile, JobData } from '../types';
 
-const RESUME_SYSTEM_PROMPT = `You are an expert resume writer. Your task is to tailor a resume to match a specific job posting while maintaining authenticity and accuracy. Follow these guidelines:
+const RESUME_SYSTEM_PROMPT = `You create clean, ATS-friendly resumes that position candidates strongly for specific roles.
 
-1. Highlight relevant skills and experiences that match the job requirements
-2. Use keywords from the job description naturally
-3. Quantify achievements where possible
-4. Keep the format clean and professional
-5. Do not fabricate or exaggerate experiences
-6. Output the resume in clean markdown format
+## Formatting Rules (STRICT)
+- Use markdown with clear visual hierarchy
+- **Bold** for section headers and job titles only
+- Use horizontal rules (---) to separate major sections
+- No fancy formatting, icons, or decorative elements
+- Single column layout, easy to scan
+- Consistent spacing throughout
 
-Be concise and impactful. Focus on achievements over responsibilities.`;
+## Section Order
+1. Name & Contact (one line: email | phone | location | linkedin)
+2. Skills (one line of comma-separated skills tailored to job requirements)
+3. Experience (most relevant first)
+4. Education (brief - just degree, school, year)
+
+## Job Title Optimization
+Rewrite job titles to better match the target role while staying truthful to the actual work:
+- "Technical Product Specialist" → "Developer Experience Engineer" or "Technical Support Engineer"
+- "Fullstack Engineer" → "Software Engineer"
+- "Junior Developer" → "Software Developer"
+- Match the seniority and terminology the target company uses
+
+## Experience Bullets
+- Lead with strong action verbs and quantified impact
+- Show initiative, ownership, and results
+- Frame accomplishments confidently - you did good work, show it
+- 3-4 bullets per role, most impactful first
+- Incorporate relevant keywords from job description naturally
+
+## Strategic Presentation
+- Round experience favorably (3 years → 3+ years, 3.5 years → 4 years)
+- Emphasize transferable skills that match requirements
+- Present the candidate as someone who takes initiative and delivers
+- Keep education minimal - degree, institution, graduation year only
+- Skills section should mirror the job requirements closely
+
+Output clean markdown ready for PDF conversion.`;
 
 export async function tailorResume(
   provider: AIProvider,
@@ -82,7 +110,40 @@ ${jobData.qualifications.map((q) => `- ${q}`).join('\n')}
 
 ---
 
-Please generate a tailored resume in markdown format that highlights the most relevant qualifications for this specific position.`;
+Generate a tailored resume following this exact structure:
+
+**[FULL NAME]**
+email@example.com | (123) 456-7890 | City, Country | linkedin.com/in/username
+
+---
+
+**Skills**
+Skill1, Skill2, Skill3, Skill4, Skill5 (match these to job requirements)
+
+---
+
+**Experience**
+
+**[Optimized Job Title]** | Company Name | Date - Date
+- Achievement with quantified impact
+- Achievement showing initiative and ownership
+- Achievement with relevant keywords
+
+(Repeat for each role, most relevant first)
+
+---
+
+**Education**
+Degree, Institution, Year
+
+---
+
+Remember:
+- Rewrite job titles to align with target role (e.g., "Fullstack Engineer" → "Software Engineer")
+- Round experience duration favorably
+- Keep it to one page worth of content
+- Skills should closely match job requirements
+- Show the candidate as someone who drives results`;
 }
 
 export async function generateResumeForMultipleJobs(

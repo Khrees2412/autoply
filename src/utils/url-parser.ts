@@ -75,6 +75,8 @@ export function getPlatformExamples(): Record<Platform, string> {
     smartrecruiters: 'https://jobs.smartrecruiters.com/Company/12345',
     pinpoint: 'https://company.pinpointhq.com/jobs/12345',
     teamtailor: 'https://company.teamtailor.com/jobs/12345',
+    workday: 'https://company.myworkdayjobs.com/en-US/External/job/12345',
+    ashby: 'https://jobs.ashbyhq.com/company/job-id',
   };
 }
 

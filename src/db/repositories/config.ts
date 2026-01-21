@@ -73,7 +73,7 @@ export class ConfigRepository {
     const parts = path.split('.');
 
     // Navigate to the nested location
-    let current: Record<string, unknown> = config as Record<string, unknown>;
+    let current: Record<string, unknown> = config as unknown as Record<string, unknown>;
     for (let i = 0; i < parts.length - 1; i++) {
       if (typeof current[parts[i]] !== 'object' || current[parts[i]] === null) {
         current[parts[i]] = {};
