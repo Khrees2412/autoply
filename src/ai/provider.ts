@@ -38,16 +38,24 @@ function createModel(config: AIConfig) {
     }
     case 'ollama': {
       // Ollama uses OpenAI-compatible API
+      let baseUrl = config.baseUrl ?? 'http://localhost:11434';
+      if (!baseUrl.endsWith('/v1')) {
+        baseUrl = baseUrl.replace(/\/$/, '') + '/v1';
+      }
       const ollama = createOpenAI({
-        baseURL: config.baseUrl ?? 'http://localhost:11434/v1',
+        baseURL: baseUrl,
         apiKey: 'ollama', // Ollama doesn't require an API key
       });
       return ollama(modelId);
     }
     case 'lmstudio': {
       // LMStudio uses OpenAI-compatible API
+      let lmBaseUrl = config.baseUrl ?? 'http://localhost:1234';
+      if (!lmBaseUrl.endsWith('/v1')) {
+        lmBaseUrl = lmBaseUrl.replace(/\/$/, '') + '/v1';
+      }
       const lmstudio = createOpenAI({
-        baseURL: config.baseUrl ?? 'http://localhost:1234/v1',
+        baseURL: lmBaseUrl,
         apiKey: 'lmstudio', // LMStudio doesn't require an API key
       });
       return lmstudio(modelId);
@@ -72,7 +80,7 @@ class UnifiedAIProvider implements AIProvider {
       await generateText({
         model,
         prompt: 'Hi',
-        maxTokens: 5,
+        maxTokens: 50,
       });
       return true;
     } catch {

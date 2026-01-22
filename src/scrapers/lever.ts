@@ -1,5 +1,6 @@
-import { BaseScraper } from './base';
+import { BaseScraper, type SubmissionOptions, type SubmissionResult } from './base';
 import type { JobData, CustomQuestion, Platform } from '../types';
+import { FormFiller } from '../core/form-filler';
 
 export class LeverScraper extends BaseScraper {
   platform: Platform = 'lever';
@@ -9,6 +10,445 @@ export class LeverScraper extends BaseScraper {
     await this.page.waitForSelector('.posting-headline, .content', {
       timeout: 10000,
     }).catch(() => {});
+  }
+
+  // ============ Lever-specific Form Submission ============
+
+  protected override async navigateToApplicationForm(): Promise<void> {
+    if (!this.page) return;
+
+    // Lever has an "Apply" button that leads to the application form
+    const applyButtonSelectors = [
+      'a.posting-btn-submit',
+      'a[href*="apply"]',
+      '.apply-button',
+      'a:has-text("Apply for this job")',
+      'a:has-text("Apply now")',
+      '.postings-btn-wrapper a',
+    ];
+
+    for (const selector of applyButtonSelectors) {
+      try {
+        const button = await this.page.$(selector);
+        if (button) {
+          const isVisible = await button.isVisible();
+          if (isVisible) {
+            await this.humanDelay(true);
+            await button.click();
+            await this.page.waitForLoadState('networkidle');
+            return;
+          }
+        }
+      } catch {
+        continue;
+      }
+    }
+  }
+
+  protected override async waitForApplicationForm(): Promise<void> {
+    if (!this.page) return;
+
+    const formSelectors = [
+      '.application-form',
+      '#application-form',
+      'form[class*="application"]',
+      '.posting-application',
+    ];
+
+    for (const selector of formSelectors) {
+      try {
+        await this.page.waitForSelector(selector, { timeout: 10000 });
+        await this.humanDelay(true);
+        return;
+      } catch {
+        continue;
+      }
+    }
+  }
+
+  override async submitApplication(url: string, options: SubmissionOptions): Promise<SubmissionResult> {
+    const errors: string[] = [];
+
+    try {
+      await this.initialize();
+      if (!this.page) throw new Error('Browser not initialized');
+
+      // Navigate to job posting
+      await this.humanDelay();
+      await this.page.goto(url, { waitUntil: 'networkidle' });
+      await this.humanDelay(true);
+      await this.humanScroll();
+
+      // Navigate to application form
+      await this.navigateToApplicationForm();
+      await this.waitForApplicationForm();
+
+      // Create form filler
+      const filler = new FormFiller(this.page, options.profile, options.jobData, {
+        resumePath: options.resumePath,
+        coverLetterPath: options.coverLetterPath,
+        answeredQuestions: options.answeredQuestions,
+      });
+
+      // Fill basic fields
+      await this.fillLeverBasicFields(options);
+
+      // Upload resume
+      if (options.resumePath) {
+        const resumeUploaded = await this.uploadLeverResume(options.resumePath);
+        if (!resumeUploaded) {
+          errors.push('Failed to upload resume');
+        }
+      }
+
+      // Upload cover letter
+      if (options.coverLetterPath) {
+        await this.uploadLeverCoverLetter(options.coverLetterPath);
+      }
+
+      // Fill URLs
+      await this.fillLeverUrls(options);
+
+      // Fill custom questions
+      if (options.answeredQuestions && options.answeredQuestions.length > 0) {
+        const questionsResult = await filler.fillCustomQuestions(options.answeredQuestions);
+        if (questionsResult.errors.length > 0) {
+          errors.push(...questionsResult.errors);
+        }
+      }
+
+      // Handle additional info textarea if present
+      await this.fillLeverAdditionalInfo(options);
+
+      // Validate
+      const validation = await this.validateBeforeSubmit();
+      if (!validation.valid) {
+        errors.push(...validation.errors);
+      }
+
+      // Submit
+      const submitted = await this.clickLeverSubmit();
+      if (!submitted) {
+        return {
+          success: false,
+          message: 'Could not find or click submit button',
+          errors,
+        };
+      }
+
+      // Wait for confirmation
+      const confirmation = await this.waitForLeverConfirmation();
+
+      // Take screenshot
+      const { configRepository } = await import('../db/repositories/config');
+      const config = configRepository.loadAppConfig();
+      let screenshotPath: string | undefined;
+      if (config.application.saveScreenshots) {
+        const { getAutoplyDir } = await import('../db');
+        const { join } = await import('path');
+        screenshotPath = join(getAutoplyDir(), 'screenshots', `lever_${Date.now()}.png`);
+        await this.takeScreenshot(screenshotPath);
+      }
+
+      return {
+        success: confirmation.success,
+        message: confirmation.message,
+        screenshotPath,
+        errors,
+      };
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : 'Unknown error');
+      return {
+        success: false,
+        message: 'Lever submission failed',
+        errors,
+      };
+    } finally {
+      await this.cleanup();
+    }
+  }
+
+  private async fillLeverBasicFields(options: SubmissionOptions): Promise<void> {
+    if (!this.page) return;
+
+    const { profile } = options;
+
+    // Full name
+    await this.fillInputBySelector(
+      'input[name="name"], input[name="fullName"], input[id*="name"]',
+      profile.name
+    );
+
+    // Email
+    await this.fillInputBySelector(
+      'input[name="email"], input[type="email"]',
+      profile.email
+    );
+
+    // Phone
+    if (profile.phone) {
+      await this.fillInputBySelector(
+        'input[name="phone"], input[type="tel"]',
+        profile.phone
+      );
+    }
+
+    // Current company
+    const latestExperience = profile.experience[0];
+    if (latestExperience) {
+      await this.fillInputBySelector(
+        'input[name="org"], input[name="company"], input[name*="current"]',
+        latestExperience.company
+      );
+    }
+  }
+
+  private async fillInputBySelector(selector: string, value: string): Promise<boolean> {
+    if (!this.page || !value) return false;
+
+    try {
+      const input = await this.page.$(selector);
+      if (input) {
+        await input.click();
+        await input.fill(value);
+        await this.humanDelay(true);
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
+  private async uploadLeverResume(resumePath: string): Promise<boolean> {
+    if (!this.page) return false;
+
+    try {
+      // Lever uses a specific resume upload area
+      const resumeSelectors = [
+        'input[type="file"][name="resume"]',
+        '.resume-upload input[type="file"]',
+        '#resume-upload input[type="file"]',
+        '[class*="resume"] input[type="file"]',
+      ];
+
+      for (const selector of resumeSelectors) {
+        const fileInput = await this.page.$(selector);
+        if (fileInput) {
+          await fileInput.setInputFiles(resumePath);
+          await this.page.waitForTimeout(2000);
+          await this.humanDelay(true);
+          return true;
+        }
+      }
+
+      // Try dropzone approach
+      const dropzone = await this.page.$('.resume-upload-area, [class*="dropzone"], .drop-area');
+      if (dropzone) {
+        try {
+          const [fileChooser] = await Promise.all([
+            this.page.waitForEvent('filechooser', { timeout: 5000 }),
+            dropzone.click(),
+          ]);
+          await fileChooser.setFiles(resumePath);
+          await this.page.waitForTimeout(2000);
+          return true;
+        } catch {
+          // Continue to next method
+        }
+      }
+
+      // Generic file input as fallback
+      const fileInputs = await this.page.$$('input[type="file"]');
+      if (fileInputs.length > 0) {
+        await fileInputs[0].setInputFiles(resumePath);
+        await this.page.waitForTimeout(2000);
+        return true;
+      }
+
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
+  private async uploadLeverCoverLetter(coverLetterPath: string): Promise<boolean> {
+    if (!this.page) return false;
+
+    try {
+      // Lever may have a separate cover letter upload
+      const coverLetterSelectors = [
+        'input[type="file"][name*="cover"]',
+        '[class*="cover-letter"] input[type="file"]',
+        '#cover-letter-upload input[type="file"]',
+      ];
+
+      for (const selector of coverLetterSelectors) {
+        const fileInput = await this.page.$(selector);
+        if (fileInput) {
+          await fileInput.setInputFiles(coverLetterPath);
+          await this.page.waitForTimeout(2000);
+          await this.humanDelay(true);
+          return true;
+        }
+      }
+
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
+  private async fillLeverUrls(options: SubmissionOptions): Promise<void> {
+    if (!this.page) return;
+
+    const { profile } = options;
+
+    // LinkedIn
+    if (profile.linkedin_url) {
+      await this.fillInputBySelector(
+        'input[name*="linkedin"], input[name="urls[LinkedIn]"], input[placeholder*="LinkedIn"]',
+        profile.linkedin_url
+      );
+    }
+
+    // GitHub
+    if (profile.github_url) {
+      await this.fillInputBySelector(
+        'input[name*="github"], input[name="urls[GitHub]"], input[placeholder*="GitHub"]',
+        profile.github_url
+      );
+    }
+
+    // Portfolio
+    if (profile.portfolio_url) {
+      await this.fillInputBySelector(
+        'input[name*="portfolio"], input[name*="website"], input[name="urls[Portfolio]"]',
+        profile.portfolio_url
+      );
+    }
+  }
+
+  private async fillLeverAdditionalInfo(options: SubmissionOptions): Promise<void> {
+    if (!this.page) return;
+
+    // Lever often has an "Additional Information" textarea
+    const additionalInfoSelectors = [
+      'textarea[name="comments"]',
+      'textarea[name="additionalInfo"]',
+      'textarea[name*="additional"]',
+      '#additional-information textarea',
+    ];
+
+    // Only fill if the cover letter is available as text
+    if (!options.documents.coverLetter) return;
+
+    for (const selector of additionalInfoSelectors) {
+      const textarea = await this.page.$(selector);
+      if (textarea) {
+        // Put a brief note, not the full cover letter
+        const note = `Please see my attached cover letter for more details about my interest in this position.`;
+        await textarea.fill(note);
+        await this.humanDelay(true);
+        return;
+      }
+    }
+  }
+
+  private async clickLeverSubmit(): Promise<boolean> {
+    if (!this.page) return false;
+
+    const submitSelectors = [
+      'button[type="submit"]',
+      'button:has-text("Submit application")',
+      'button:has-text("Submit")',
+      '.postings-btn[type="submit"]',
+      'input[type="submit"]',
+      '.application-form button[type="submit"]',
+    ];
+
+    for (const selector of submitSelectors) {
+      try {
+        const button = await this.page.$(selector);
+        if (button) {
+          const isVisible = await button.isVisible();
+          const isEnabled = await button.isEnabled();
+
+          if (isVisible && isEnabled) {
+            await this.humanDelay(true);
+            await button.click();
+            return true;
+          }
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    return false;
+  }
+
+  private async waitForLeverConfirmation(): Promise<{ success: boolean; message: string }> {
+    if (!this.page) return { success: false, message: 'Page not initialized' };
+
+    try {
+      await this.page.waitForLoadState('networkidle').catch(() => {});
+      await this.humanDelay();
+
+      // Check for confirmation
+      const confirmationSelectors = [
+        '.application-confirmation',
+        '.thank-you',
+        '[class*="success"]',
+        'h1:has-text("Thank")',
+        'h2:has-text("Thank")',
+        ':has-text("Application submitted")',
+        ':has-text("received your application")',
+      ];
+
+      for (const selector of confirmationSelectors) {
+        try {
+          const element = await this.page.$(selector);
+          if (element) {
+            const isVisible = await element.isVisible();
+            if (isVisible) {
+              const text = await element.textContent();
+              return {
+                success: true,
+                message: text?.trim() || 'Application submitted to Lever',
+              };
+            }
+          }
+        } catch {
+          continue;
+        }
+      }
+
+      // Check URL
+      const currentUrl = this.page.url();
+      if (currentUrl.includes('thank') || currentUrl.includes('success') || currentUrl.includes('confirmation')) {
+        return { success: true, message: 'Application submitted successfully' };
+      }
+
+      // Check for errors
+      const errorElement = await this.page.$('.error, [class*="error"], .flash-error');
+      if (errorElement) {
+        const isVisible = await errorElement.isVisible();
+        if (isVisible) {
+          const errorText = await errorElement.textContent();
+          if (errorText?.trim()) {
+            return { success: false, message: errorText.trim() };
+          }
+        }
+      }
+
+      return { success: true, message: 'Submission completed (no errors detected)' };
+    } catch (error) {
+      return {
+        success: false,
+        message: `Confirmation check failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      };
+    }
   }
 
   protected async extractJobData(url: string): Promise<JobData> {

@@ -47,3 +47,5 @@ export {
   WorkdayScraper,
   AshbyScraper,
 };
+
+export type { SubmissionResult, SubmissionOptions } from './base';
