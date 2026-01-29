@@ -49,7 +49,6 @@ if [ "$OS" = "linux" ] && [ "$ARCH" = "arm64" ]; then
   ARCH="x64"
 fi
 
-ASSET_NAME="${BINARY_NAME%-*}-${OS}-${ARCH}"
 if [ "$OS" = "windows" ]; then
   ASSET_NAME="autoply-windows-x64.exe"
 else
