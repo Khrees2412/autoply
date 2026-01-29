@@ -59,7 +59,7 @@ info "Detected: $OS-$ARCH"
 info "Downloading $ASSET_NAME..."
 
 # Get latest release download URL
-DOWNLOAD_URL="https://github.com/$REPO/releases/latest/download/$ASSET_NAME"
+DOWNLOAD_URL="https://github.com/$REPO/releases/download/nightly/$ASSET_NAME"
 
 # Download to temp
 TMP_FILE=$(mktemp)
