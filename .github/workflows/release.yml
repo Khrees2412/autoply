@@ -11,6 +11,7 @@ permissions:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
@@ -40,8 +41,7 @@ jobs:
         run: bun install
 
       - name: Build binary
-        run: |
-          bun build ./src/cli/index.ts --compile --target=${{ matrix.target }} --outfile ${{ matrix.artifact }} --external playwright --external playwright-core
+        run: bun build ./src/cli/index.ts --compile --target=${{ matrix.target }} --outfile ${{ matrix.artifact }} --external playwright --external playwright-core
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

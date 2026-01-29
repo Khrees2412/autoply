@@ -38,8 +38,8 @@ export const loginCommand = new Command('login')
       userAgent:
         'Mozilla/5.0 (Macintosh; Apple Silicon Mac OS X 14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       viewport: { width: 1920, height: 1080 },
-      locale: 'en-NG',
-      timezoneId: 'Africa/Lagos',
+      locale: Intl.DateTimeFormat().resolvedOptions().locale || 'en-US',
+      timezoneId: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
     });
 
     // Remove webdriver detection flag

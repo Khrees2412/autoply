@@ -1,162 +1,211 @@
 # Autoply
 
-Automated job application CLI - Apply to jobs with AI-generated resumes and cover letters.
+AI-powered CLI that automates job applications. It scrapes job postings, generates tailored resumes and cover letters, fills out forms, and submits applications — all from your terminal.
 
 ## Installation
+
+### Quick Install
+
+```bash
+curl -fsSL https://autoply.khrees.com/install | bash
+```
 
 ### From Source
 
 ```bash
-# Clone and install dependencies
 git clone https://github.com/khrees2412/autoply.git
 cd autoply
 bun install
-
-# Install Playwright browsers (required for job scraping)
 bunx playwright install chromium
-
-# Build the executable
 bun run build
-
-# Move to your PATH (optional)
 mv dist/autoply /usr/local/bin/
 ```
 
-### Build for Other Platforms
+> **Requires [Bun](https://bun.sh)** — install with `curl -fsSL https://bun.sh/install | bash`
+
+## Setup
+
+### 1. Create your profile
 
 ```bash
-bun run build:mac         # macOS ARM (Apple Silicon)
-bun run build:mac-intel   # macOS Intel
-bun run build:linux       # Linux x64
-bun run build:windows     # Windows x64
-bun run build:all         # All platforms
+autoply init
 ```
 
-## Quick Start
+This walks you through entering your name, contact info, skills, work experience, education, and job preferences. Everything is stored locally in `~/.autoply/autoply.db`.
+
+### 2. Configure an AI provider
+
+Autoply needs an AI provider to generate documents. Choose one:
+
+**Cloud providers** (require API keys):
 
 ```bash
-# 1. Initialize your profile
-autoply init
-
-# 2. Configure your AI provider
+# Anthropic
 autoply config set ai.provider anthropic
-autoply config set ai.apiKey sk-ant-...
+autoply config set ai.model claude-sonnet-4-5-20250929
 
-# 3. Apply to a job
-autoply apply https://linkedin.com/jobs/view/123456
+# OpenAI
+autoply config set ai.provider openai
+autoply config set ai.model gpt-5.2
+
+# Google
+autoply config set ai.provider google
+autoply config set ai.model gemini-pro-3
 ```
 
-## Commands
-
-### `autoply init`
-
-Set up your profile with work experience, skills, and education.
+Set your API key as an environment variable. Add one of these to your `.env` file in the project root, or export in your shell profile:
 
 ```bash
-autoply init
+ANTHROPIC_API_KEY=sk-ant-...
+OPENAI_API_KEY=sk-...
+GOOGLE_API_KEY=AIza...
 ```
 
-### `autoply apply [urls...]`
-
-Apply to one or more jobs with AI-generated documents.
+**Local providers** (no API key needed):
 
 ```bash
-# Single job
-autoply apply https://linkedin.com/jobs/view/123456
+# Ollama (default)
+autoply config set ai.provider ollama
+autoply config set ai.model llama3.2
 
-# Multiple jobs
+# LM Studio
+autoply config set ai.provider lmstudio
+```
+
+Make sure the local server is running before using Autoply.
+
+### 3. Verify it works
+
+```bash
+autoply config test
+```
+
+### 4. (Optional) Save a browser session
+
+For platforms that require login (e.g. LinkedIn):
+
+```bash
+autoply login linkedin
+```
+
+This opens a browser — log in manually, and the session is saved for future use.
+
+## Usage
+
+### Apply to a job
+
+```bash
+autoply apply https://boards.greenhouse.io/company/jobs/123456
+```
+
+### Apply to multiple jobs
+
+```bash
 autoply apply https://job1.com https://job2.com https://job3.com
 
-# From a file (one URL per line)
+# Or from a file (one URL per line)
 autoply apply -f jobs.txt
-
-# Dry run - generate documents without submitting
-autoply apply -d https://linkedin.com/jobs/view/123456
 ```
 
-### `autoply generate`
-
-Generate tailored documents without applying.
+### Dry run (generate documents without submitting)
 
 ```bash
-# Generate a resume
-autoply generate resume https://linkedin.com/jobs/view/123456
-
-# Generate a cover letter
-autoply generate cover-letter https://linkedin.com/jobs/view/123456
-
-# Generate both
-autoply generate both https://linkedin.com/jobs/view/123456
+autoply apply -d https://boards.greenhouse.io/company/jobs/123456
 ```
 
-### `autoply profile`
-
-Manage your profile.
+### Generate documents only
 
 ```bash
-autoply profile show      # Display your profile
-autoply profile edit      # Edit your profile
-autoply profile delete    # Delete your profile
-autoply profile import resume.pdf  # Import from existing resume
+autoply generate resume https://boards.greenhouse.io/company/jobs/123456
+autoply generate cover-letter https://boards.greenhouse.io/company/jobs/123456
+autoply generate both https://boards.greenhouse.io/company/jobs/123456 -d ./output
 ```
 
-### `autoply config`
-
-Configure AI providers and settings.
+### View application history
 
 ```bash
-# Set AI provider (anthropic, openai, google)
-autoply config set ai.provider anthropic
-autoply config set ai.apiKey sk-ant-...
-
-# View configuration
-autoply config list
-autoply config get ai.provider
-
-# Test AI connection
-autoply config test
-
-# Reset to defaults
-autoply config reset
+autoply history
+autoply history -s submitted
+autoply history -c "Anthropic"
 ```
 
-### `autoply history`
-
-View your application history.
+### Manage your profile
 
 ```bash
-autoply history                    # View recent applications
-autoply history -s submitted       # Filter by status
-autoply history -c "Acme Inc"      # Filter by company
-autoply history -l 50              # Show more results
-autoply history show <id>          # View application details
-autoply history clear              # Clear history
+autoply profile show
+autoply profile edit
+autoply profile delete
 ```
 
-## Supported Job Platforms
-
-- LinkedIn
-- Greenhouse
-- Lever
-- Workday
-- Ashby
-- Jobvite
-- SmartRecruiters
-- Pinpoint
-- Teamtailor
-
-## AI Providers
-
-Configure your preferred AI provider:
-
-| Provider | Config Value | API Key Format |
-|----------|--------------|----------------|
-| Anthropic | `anthropic` | `sk-ant-...` |
-| OpenAI | `openai` | `sk-...` |
-| Google | `google` | `AIza...` |
+### Configuration
 
 ```bash
-autoply config providers  # List all available providers
+autoply config list              # Show all settings
+autoply config set <key> <value> # Set a value
+autoply config get <key>         # Get a value
+autoply config reset             # Reset to defaults
+autoply config providers         # List AI providers
+autoply config test              # Test AI connection
+```
+
+**All config keys:**
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `ai.provider` | `ollama` | AI provider (`openai`, `anthropic`, `google`, `ollama`, `lmstudio`) |
+| `ai.model` | varies | Model name |
+| `ai.baseUrl` | varies | API base URL (local providers) |
+| `ai.temperature` | `0.7` | Generation temperature |
+| `browser.headless` | `false` | Run browser without UI |
+| `browser.timeout` | `30000` | Browser timeout (ms) |
+| `application.autoSubmit` | `false` | Auto-submit after generating docs |
+| `application.saveScreenshots` | `true` | Save screenshots on submission |
+| `application.retryAttempts` | `3` | Retry count for failed operations |
+
+## Supported Platforms
+
+| Platform | URL Pattern |
+|----------|-------------|
+| Greenhouse | `boards.greenhouse.io/*` |
+| LinkedIn | `linkedin.com/jobs/*` |
+| Lever | `jobs.lever.co/*` |
+| Workday | `*.myworkdayjobs.com/*` |
+| Ashby | `jobs.ashbyhq.com/*` |
+| Jobvite | `jobs.jobvite.com/*` |
+| SmartRecruiters | `jobs.smartrecruiters.com/*` |
+| Pinpoint | `*.pinpointhq.com/*` |
+| Teamtailor | `*.teamtailor.com/*` |
+
+## Data Storage
+
+All data is stored locally in `~/.autoply/`:
+
+```
+~/.autoply/
+├── autoply.db           # SQLite database (profiles, applications, config)
+├── config.json          # App configuration
+├── browser-state.json   # Saved browser session (after login)
+├── documents/           # Generated resumes and cover letters
+└── screenshots/         # Submission screenshots
+```
+
+## Development
+
+```bash
+bun install
+bun run dev              # Run CLI in dev mode
+bun test                 # Run tests
+bun run build            # Build for current platform
+bun run build:all        # Build for all platforms
+```
+
+### Build targets
+
+```bash
+bun run build:mac        # macOS ARM (Apple Silicon)
+bun run build:mac-intel  # macOS Intel
+bun run build:linux      # Linux x64
+bun run build:windows    # Windows x64
 ```
 
 ## License

@@ -1,6 +1,6 @@
 import type { Profile, JobData, Application, GeneratedDocuments } from '../types';
 import { parseJobUrl } from '../utils/url-parser';
-import { scrapeJob } from '../scrapers';
+import { scrapeJob, createScraper } from '../scrapers';
 import { createAIProvider } from '../ai/provider';
 import { tailorResume } from '../ai/resume';
 import { generateCoverLetter, answerApplicationQuestion } from '../ai/cover-letter';
@@ -11,6 +11,7 @@ import { ApplicationQueue } from './queue';
 import { generateResumePdf, generateCoverLetterPdf } from './document';
 import { logger, createSpinner } from '../utils/logger';
 import { join } from 'path';
+import { mkdir } from 'fs/promises';
 import { getAutoplyDir, ensureAutoplyDir } from '../db';
 
 export interface ApplicationResult {
@@ -60,6 +61,14 @@ export class ApplicationOrchestrator {
       return {
         success: false,
         error: `Scraping failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      };
+    }
+
+    // Don't submit applications with unknown job titles
+    if (jobData.title === 'Unknown Position' && !dryRun && !generateOnly) {
+      return {
+        success: false,
+        error: 'Cannot submit application: job title could not be scraped. Try with --dry-run to generate documents only.',
       };
     }
 
@@ -192,21 +201,57 @@ export class ApplicationOrchestrator {
     profile: Profile,
     documents: GeneratedDocuments
   ): Promise<void> {
-    // This would handle the actual form submission using Playwright
-    // For now, this is a placeholder that would be expanded for real submissions
     const config = configRepository.loadAppConfig();
 
-    // Save documents if screenshots are enabled
-    if (config.application.saveScreenshots) {
-      ensureAutoplyDir();
-      const docsDir = join(getAutoplyDir(), 'documents');
-      await Bun.write(join(docsDir, `${application.id}_resume.md`), documents.resume);
-      await Bun.write(join(docsDir, `${application.id}_cover_letter.md`), documents.coverLetter);
+    // Ensure directories exist
+    ensureAutoplyDir();
+    const docsDir = join(getAutoplyDir(), 'documents');
+    const screenshotsDir = join(getAutoplyDir(), 'screenshots');
+
+    await mkdir(docsDir, { recursive: true });
+    await mkdir(screenshotsDir, { recursive: true });
+
+    // Save documents (markdown and PDF)
+    const resumeMdPath = join(docsDir, `${application.id}_resume.md`);
+    const coverLetterMdPath = join(docsDir, `${application.id}_cover_letter.md`);
+    const resumePdfPath = join(docsDir, `${application.id}_resume.pdf`);
+    const coverLetterPdfPath = join(docsDir, `${application.id}_cover_letter.pdf`);
+
+    // Save markdown versions
+    await Bun.write(resumeMdPath, documents.resume);
+    await Bun.write(coverLetterMdPath, documents.coverLetter);
+
+    // Generate PDFs for uploading
+    await generateResumePdf(documents.resume, resumePdfPath, profile.name);
+    await generateCoverLetterPdf(documents.coverLetter, coverLetterPdfPath, profile.name);
+
+    // Create scraper for this platform
+    const scraper = createScraper(application.platform);
+
+    // Prepare answered questions
+    const answeredQuestions = jobData.custom_questions;
+
+    // Submit the application using platform-specific scraper
+    const result = await scraper.submitApplication(application.url, {
+      profile,
+      jobData,
+      documents,
+      resumePath: resumePdfPath,
+      coverLetterPath: coverLetterPdfPath,
+      answeredQuestions,
+    });
+
+    if (!result.success) {
+      const errorMsg = result.errors.length > 0
+        ? `${result.message}: ${result.errors.join(', ')}`
+        : result.message;
+      throw new Error(errorMsg);
     }
 
-    // Actual form submission would go here
-    // This requires careful implementation for each platform
-    throw new Error('Automatic submission not yet implemented. Use dry-run mode.');
+    // Log success details
+    if (result.screenshotPath) {
+      logger.info(`Screenshot saved to: ${result.screenshotPath}`);
+    }
   }
 
   async applyToMultipleJobs(urls: string[], options: ApplyOptions = {}): Promise<ApplicationResult[]> {

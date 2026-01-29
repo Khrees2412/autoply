@@ -7,15 +7,29 @@ import { configRepository } from '../db/repositories/config';
 
 // Model mappings for each provider
 const MODEL_DEFAULTS: Record<AIProviderType, string> = {
-  openai: 'gpt-4o',
-  anthropic: 'claude-3-5-sonnet-latest',
-  google: 'gemini-1.5-pro',
+  openai: 'gpt-5.2',
+  anthropic: 'claude-sonnet-4-5-20250929',
+  google: 'gemini-pro-3',
   ollama: 'llama3.2',
   lmstudio: 'local-model',
 };
 
+const API_KEY_ENV_VARS: Partial<Record<AIProviderType, string>> = {
+  openai: 'OPENAI_API_KEY',
+  anthropic: 'ANTHROPIC_API_KEY',
+  google: 'GOOGLE_API_KEY',
+};
+
 function createModel(config: AIConfig) {
   const modelId = config.model || MODEL_DEFAULTS[config.provider];
+
+  // Validate API key for cloud providers
+  const envVar = API_KEY_ENV_VARS[config.provider];
+  if (envVar && !process.env[envVar]) {
+    throw new Error(
+      `Missing ${envVar} environment variable. Set it with: export ${envVar}=your-key`
+    );
+  }
 
   switch (config.provider) {
     case 'openai': {
@@ -38,16 +52,24 @@ function createModel(config: AIConfig) {
     }
     case 'ollama': {
       // Ollama uses OpenAI-compatible API
+      let baseUrl = config.baseUrl ?? 'http://localhost:11434';
+      if (!baseUrl.endsWith('/v1')) {
+        baseUrl = baseUrl.replace(/\/$/, '') + '/v1';
+      }
       const ollama = createOpenAI({
-        baseURL: config.baseUrl ?? 'http://localhost:11434/v1',
+        baseURL: baseUrl,
         apiKey: 'ollama', // Ollama doesn't require an API key
       });
       return ollama(modelId);
     }
     case 'lmstudio': {
       // LMStudio uses OpenAI-compatible API
+      let lmBaseUrl = config.baseUrl ?? 'http://localhost:1234';
+      if (!lmBaseUrl.endsWith('/v1')) {
+        lmBaseUrl = lmBaseUrl.replace(/\/$/, '') + '/v1';
+      }
       const lmstudio = createOpenAI({
-        baseURL: config.baseUrl ?? 'http://localhost:1234/v1',
+        baseURL: lmBaseUrl,
         apiKey: 'lmstudio', // LMStudio doesn't require an API key
       });
       return lmstudio(modelId);
@@ -72,7 +94,7 @@ class UnifiedAIProvider implements AIProvider {
       await generateText({
         model,
         prompt: 'Hi',
-        maxTokens: 5,
+        maxTokens: 50,
       });
       return true;
     } catch {

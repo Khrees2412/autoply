@@ -20,6 +20,14 @@ export interface ProfileRow {
   updated_at: string;
 }
 
+function safeJsonParse<T>(value: string, fallback: T): T {
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
+}
+
 function rowToProfile(row: ProfileRow): Profile {
   return {
     id: row.id,
@@ -32,10 +40,10 @@ function rowToProfile(row: ProfileRow): Profile {
     portfolio_url: row.portfolio_url ?? undefined,
     base_resume: row.base_resume ?? undefined,
     base_cover_letter: row.base_cover_letter ?? undefined,
-    preferences: JSON.parse(row.preferences) as Preferences,
-    skills: JSON.parse(row.skills) as string[],
-    experience: JSON.parse(row.experience) as Experience[],
-    education: JSON.parse(row.education) as Education[],
+    preferences: safeJsonParse<Preferences>(row.preferences, {} as Preferences),
+    skills: safeJsonParse<string[]>(row.skills, []),
+    experience: safeJsonParse<Experience[]>(row.experience, []),
+    education: safeJsonParse<Education[]>(row.education, []),
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -67,7 +75,11 @@ export class ProfileRepository {
       JSON.stringify(profile.education ?? [])
     );
 
-    return this.findById(Number(result.lastInsertRowid))!;
+    const created = this.findById(Number(result.lastInsertRowid));
+    if (!created) {
+      throw new Error('Failed to retrieve profile after creation');
+    }
+    return created;
   }
 
   findById(id: number): Profile | null {

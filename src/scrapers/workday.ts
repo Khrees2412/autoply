@@ -1,5 +1,6 @@
-import { BaseScraper } from './base';
+import { BaseScraper, type SubmissionOptions, type SubmissionResult } from './base';
 import type { JobData, CustomQuestion, Platform } from '../types';
+import { FormFiller } from '../core/form-filler';
 
 export class WorkdayScraper extends BaseScraper {
   platform: Platform = 'workday';
@@ -9,6 +10,202 @@ export class WorkdayScraper extends BaseScraper {
     await this.page.waitForSelector('[data-automation-id="jobPostingHeader"], .css-1q2dra3, [data-automation-id="jobPostingDescription"]', {
       timeout: 15000,
     }).catch(() => {});
+  }
+
+  // ============ Workday Form Submission ============
+
+  override async submitApplication(url: string, options: SubmissionOptions): Promise<SubmissionResult> {
+    const errors: string[] = [];
+
+    try {
+      await this.initialize();
+      if (!this.page) throw new Error('Browser not initialized');
+
+      await this.humanDelay();
+      await this.page.goto(url, { waitUntil: 'networkidle' });
+      await this.humanDelay(true);
+      await this.humanScroll();
+
+      // Click Apply button
+      await this.navigateToWorkdayApplication();
+      await this.waitForWorkdayApplicationForm();
+
+      // Check if sign-in is required
+      const needsSignIn = await this.checkWorkdaySignIn();
+      if (needsSignIn) {
+        return {
+          success: false,
+          message: 'Workday requires sign-in. Use "autoply login" to store credentials.',
+          errors: ['Authentication required'],
+        };
+      }
+
+      // Process multi-step form
+      const result = await this.processWorkdaySteps(options);
+      errors.push(...result.errors);
+
+      // Screenshot
+      const { configRepository } = await import('../db/repositories/config');
+      const config = configRepository.loadAppConfig();
+      let screenshotPath: string | undefined;
+      if (config.application.saveScreenshots) {
+        const { getAutoplyDir } = await import('../db');
+        const { join } = await import('path');
+        screenshotPath = join(getAutoplyDir(), 'screenshots', `workday_${Date.now()}.png`);
+        await this.takeScreenshot(screenshotPath);
+      }
+
+      return { success: result.success, message: result.message, screenshotPath, errors };
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : 'Unknown error');
+      return { success: false, message: 'Workday submission failed', errors };
+    } finally {
+      await this.cleanup();
+    }
+  }
+
+  private async navigateToWorkdayApplication(): Promise<void> {
+    if (!this.page) return;
+
+    const selectors = [
+      '[data-automation-id="jobPostingApplyButton"]',
+      'button:has-text("Apply")',
+      'a:has-text("Apply")',
+    ];
+
+    for (const selector of selectors) {
+      const button = await this.page.$(selector);
+      if (button) {
+        await this.humanDelay(true);
+        await button.click();
+        await this.page.waitForLoadState('networkidle');
+        return;
+      }
+    }
+  }
+
+  private async waitForWorkdayApplicationForm(): Promise<void> {
+    if (!this.page) return;
+
+    await this.page.waitForSelector('[data-automation-id="applicationForm"], [data-automation-id*="input"]', {
+      timeout: 15000,
+    }).catch(() => {});
+    await this.humanDelay(true);
+  }
+
+  private async checkWorkdaySignIn(): Promise<boolean> {
+    if (!this.page) return true;
+
+    const signInElement = await this.page.$('[data-automation-id="signInLink"], button:has-text("Sign In")');
+    if (signInElement) {
+      const isVisible = await signInElement.isVisible();
+      return isVisible;
+    }
+    return false;
+  }
+
+  private async processWorkdaySteps(options: SubmissionOptions): Promise<{ success: boolean; message: string; errors: string[] }> {
+    if (!this.page) return { success: false, message: 'Page not initialized', errors: [] };
+
+    const errors: string[] = [];
+    let stepCount = 0;
+    const maxSteps = 15;
+
+    while (stepCount < maxSteps) {
+      stepCount++;
+      await this.fillWorkdayStep(options, errors);
+
+      // Check for submit
+      const submitButton = await this.page.$('[data-automation-id="submit"], button:has-text("Submit")');
+      if (submitButton) {
+        const isEnabled = await submitButton.isEnabled();
+        if (isEnabled) {
+          await this.humanDelay(true);
+          await submitButton.click();
+          return this.waitForWorkdayConfirmation();
+        }
+      }
+
+      // Next button
+      const nextButton = await this.page.$('[data-automation-id="bottom-navigation-next-button"], button:has-text("Next")');
+      if (nextButton) {
+        const isEnabled = await nextButton.isEnabled();
+        if (isEnabled) {
+          await this.humanDelay(true);
+          await nextButton.click();
+          await this.page.waitForTimeout(2000);
+          continue;
+        }
+      }
+      break;
+    }
+
+    return { success: false, message: 'Could not complete Workday application', errors };
+  }
+
+  private async fillWorkdayStep(options: SubmissionOptions, errors: string[]): Promise<void> {
+    if (!this.page) return;
+
+    const { profile } = options;
+
+    // Name fields
+    await this.fillWorkdayInput('[data-automation-id="legalNameSection_firstName"]', profile.name.split(' ')[0]);
+    await this.fillWorkdayInput('[data-automation-id="legalNameSection_lastName"]', profile.name.split(' ').slice(1).join(' '));
+    await this.fillWorkdayInput('[data-automation-id="email"]', profile.email);
+
+    if (profile.phone) {
+      await this.fillWorkdayInput('[data-automation-id="phone-number"]', profile.phone);
+    }
+
+    // Resume upload
+    if (options.resumePath) {
+      const fileInput = await this.page.$('[data-automation-id="file-upload-input-ref"], input[type="file"]');
+      if (fileInput) {
+        await fileInput.setInputFiles(options.resumePath);
+        await this.page.waitForTimeout(2000);
+      }
+    }
+
+    // Custom questions
+    if (options.answeredQuestions) {
+      const filler = new FormFiller(this.page, profile, options.jobData, { answeredQuestions: options.answeredQuestions });
+      const result = await filler.fillCustomQuestions(options.answeredQuestions);
+      errors.push(...result.errors);
+    }
+
+    await this.humanDelay(true);
+  }
+
+  private async fillWorkdayInput(selector: string, value: string): Promise<boolean> {
+    if (!this.page || !value) return false;
+    try {
+      const input = await this.page.$(selector);
+      if (input) {
+        await input.fill(value);
+        await this.humanDelay(true);
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
+  private async waitForWorkdayConfirmation(): Promise<{ success: boolean; message: string; errors: string[] }> {
+    if (!this.page) return { success: false, message: 'Page not initialized', errors: [] };
+
+    try {
+      await this.page.waitForTimeout(3000);
+
+      const successElement = await this.page.$('[data-automation-id="confirmationMessage"], :has-text("Thank you")');
+      if (successElement) {
+        return { success: true, message: 'Workday application submitted', errors: [] };
+      }
+
+      return { success: true, message: 'Submission completed', errors: [] };
+    } catch {
+      return { success: false, message: 'Confirmation check failed', errors: [] };
+    }
   }
 
   protected async extractJobData(url: string): Promise<JobData> {

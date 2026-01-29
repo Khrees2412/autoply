@@ -7,6 +7,7 @@ import {
   getPlatformExamples,
   validateUrls,
 } from './url-parser';
+import type { Platform } from '../types';
 
 describe('url-parser', () => {
   describe('parseJobUrl', () => {
@@ -219,7 +220,7 @@ describe('url-parser', () => {
       for (const [platform, url] of Object.entries(examples)) {
         const result = parseJobUrl(url);
         expect(result.isValid).toBe(true);
-        expect(result.platform).toBe(platform);
+        expect(result.platform).toBe(platform as Platform);
       }
     });
   });
