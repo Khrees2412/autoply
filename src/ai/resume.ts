@@ -38,6 +38,9 @@ Rewrite job titles to better match the target role while staying truthful to the
 - Keep education minimal - degree, institution, graduation year only
 - Skills section should mirror the job requirements closely
 
+## Using the Candidate's Existing Resume
+If the candidate provides an existing resume, treat it as the primary source of truth for their voice, phrasing, and content. Your job is to tailor it for the target role — not rewrite it from scratch. Pull in additional details from the structured profile only if they strengthen the application. Preserve their writing style and any specifics (metrics, project names, etc.) from the original.
+
 Output clean markdown ready for PDF conversion.`;
 
 export async function tailorResume(
@@ -88,7 +91,7 @@ ${edu.gpa ? `GPA: ${edu.gpa}` : ''}
   )
   .join('\n')}
 
-${profile.base_resume ? `### Additional Information from Base Resume\n${profile.base_resume}` : ''}
+${profile.base_resume ? `### Candidate's Existing Resume\nThe candidate has provided their own resume below. Use this as the primary reference for tone, structure, and content. Tailor it for the target job by emphasizing relevant experience and skills, rewriting bullets to match job requirements, and optimizing job titles — but preserve the candidate's voice and any details not found in the structured profile above.\n\n${profile.base_resume}` : ''}
 
 ---
 

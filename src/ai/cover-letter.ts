@@ -19,7 +19,10 @@ Avoid:
 - Generic flattery about the company
 - Overused phrases like "passionate about", "excited to", "leverage my skills"
 
-The best cover letters feel like the start of a conversation, not a sales pitch.`;
+The best cover letters feel like the start of a conversation, not a sales pitch.
+
+## Using the Candidate's Existing Cover Letter
+If the candidate provides an existing cover letter, treat it as the primary reference for their voice, tone, and personal narrative. Adapt it for the specific role and company rather than writing from scratch. Preserve their storytelling style and any personal anecdotes — just redirect them toward this opportunity.`;
 
 export async function generateCoverLetter(
   provider: AIProvider,
@@ -54,7 +57,7 @@ Key achievements: ${exp.highlights.slice(0, 3).join('; ')}
   )
   .join('\n')}
 
-${profile.base_cover_letter ? `### Cover Letter Template/Notes\n${profile.base_cover_letter}` : ''}
+${profile.base_cover_letter ? `### Candidate's Existing Cover Letter\nThe candidate has provided their own cover letter below. Use this as the primary reference for tone, writing style, and personal narrative. Adapt it for the target role by connecting the candidate's story to this specific company and position, but preserve their authentic voice and any personal anecdotes or perspectives.\n\n${profile.base_cover_letter}` : ''}
 
 ---
 
