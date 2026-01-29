@@ -39,7 +39,6 @@ export const initCommand = new Command('init')
       logger.keyValue('Name', profile.name);
       logger.keyValue('Email', profile.email);
       logger.keyValue('Skills', profile.skills.join(', ') || 'None');
-      logger.keyValue('Experience', `${profile.experience.length} entries`);
       logger.keyValue('Education', `${profile.education.length} entries`);
       logger.newline();
       logger.info(`Data stored in: ${getAutoplyDir()}`);

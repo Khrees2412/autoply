@@ -1,5 +1,5 @@
 import { input, confirm, editor } from '@inquirer/prompts';
-import type { Profile, Experience, Education, Preferences } from '../../types';
+import type { Profile, Education, Preferences } from '../../types';
 
 export async function promptForProfile(): Promise<Omit<Profile, 'id' | 'created_at' | 'updated_at'>> {
   console.log('\n📝 Let\'s set up your profile\n');
@@ -46,25 +46,6 @@ export async function promptForProfile(): Promise<Omit<Profile, 'id' | 'created_
     .map((s) => s.trim())
     .filter(Boolean);
 
-  // Experience
-  const experience: Experience[] = [];
-  const addExperience = await confirm({
-    message: 'Add work experience?',
-    default: true,
-  });
-
-  if (addExperience) {
-    let addMore = true;
-    while (addMore) {
-      const exp = await promptForExperience();
-      experience.push(exp);
-      addMore = await confirm({
-        message: 'Add another experience?',
-        default: false,
-      });
-    }
-  }
-
   // Education
   const education: Education[] = [];
   const addEducation = await confirm({
@@ -87,31 +68,21 @@ export async function promptForProfile(): Promise<Omit<Profile, 'id' | 'created_
   // Preferences
   const preferences = await promptForPreferences();
 
-  // Base resume
-  const hasBaseResume = await confirm({
-    message: 'Do you have a base resume text to add?',
-    default: false,
+  // Base resume (required)
+  const base_resume = await editor({
+    message: 'Enter your base resume (markdown format):',
+    validate: (value) =>
+      value && value.trim().length > 0 ? true : 'Base resume is required',
   });
 
-  let base_resume: string | undefined;
-  if (hasBaseResume) {
-    base_resume = await editor({
-      message: 'Enter your base resume (markdown format):',
-    });
-  }
-
-  // Base cover letter
-  const hasBaseCoverLetter = await confirm({
-    message: 'Do you have a base cover letter template?',
-    default: false,
+  // Base cover letter (required)
+  const base_cover_letter = await editor({
+    message: 'Enter your base cover letter template:',
+    validate: (value) =>
+      value && value.trim().length > 0
+        ? true
+        : 'Base cover letter template is required',
   });
-
-  let base_cover_letter: string | undefined;
-  if (hasBaseCoverLetter) {
-    base_cover_letter = await editor({
-      message: 'Enter your base cover letter template:',
-    });
-  }
 
   return {
     name,
@@ -125,64 +96,8 @@ export async function promptForProfile(): Promise<Omit<Profile, 'id' | 'created_
     base_cover_letter,
     preferences,
     skills,
-    experience,
+    experience: [],
     education,
-  };
-}
-
-async function promptForExperience(): Promise<Experience> {
-  const company = await input({
-    message: 'Company name:',
-    validate: (v) => (v.length > 0 ? true : 'Required'),
-  });
-
-  const title = await input({
-    message: 'Job title:',
-    validate: (v) => (v.length > 0 ? true : 'Required'),
-  });
-
-  const location = await input({
-    message: 'Location (optional):',
-  });
-
-  const start_date = await input({
-    message: 'Start date (e.g., Jan 2020):',
-    validate: (v) => (v.length > 0 ? true : 'Required'),
-  });
-
-  const isCurrent = await confirm({
-    message: 'Currently working here?',
-    default: false,
-  });
-
-  let end_date: string | undefined;
-  if (!isCurrent) {
-    end_date = await input({
-      message: 'End date (e.g., Dec 2023):',
-    });
-  }
-
-  const description = await input({
-    message: 'Brief description (optional):',
-  });
-
-  const highlightsInput = await input({
-    message: 'Key achievements (comma-separated):',
-  });
-
-  const highlights = highlightsInput
-    .split(',')
-    .map((h) => h.trim())
-    .filter(Boolean);
-
-  return {
-    company,
-    title,
-    location: location || undefined,
-    start_date,
-    end_date,
-    description: description || undefined,
-    highlights,
   };
 }
 
