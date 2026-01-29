@@ -7,15 +7,29 @@ import { configRepository } from '../db/repositories/config';
 
 // Model mappings for each provider
 const MODEL_DEFAULTS: Record<AIProviderType, string> = {
-  openai: 'gpt-4o',
-  anthropic: 'claude-3-5-sonnet-latest',
-  google: 'gemini-1.5-pro',
+  openai: 'gpt-5.2',
+  anthropic: 'claude-sonnet-4-5-20250929',
+  google: 'gemini-pro-3',
   ollama: 'llama3.2',
   lmstudio: 'local-model',
 };
 
+const API_KEY_ENV_VARS: Partial<Record<AIProviderType, string>> = {
+  openai: 'OPENAI_API_KEY',
+  anthropic: 'ANTHROPIC_API_KEY',
+  google: 'GOOGLE_API_KEY',
+};
+
 function createModel(config: AIConfig) {
   const modelId = config.model || MODEL_DEFAULTS[config.provider];
+
+  // Validate API key for cloud providers
+  const envVar = API_KEY_ENV_VARS[config.provider];
+  if (envVar && !process.env[envVar]) {
+    throw new Error(
+      `Missing ${envVar} environment variable. Set it with: export ${envVar}=your-key`
+    );
+  }
 
   switch (config.provider) {
     case 'openai': {

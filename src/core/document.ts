@@ -191,7 +191,13 @@ function cleanMarkdownFormatting(text: string): string {
 }
 
 export async function savePdf(pdfBytes: Uint8Array, path: string): Promise<void> {
-  await Bun.write(path, pdfBytes);
+  try {
+    await Bun.write(path, pdfBytes);
+  } catch (error) {
+    throw new Error(
+      `Failed to save PDF to ${path}: ${error instanceof Error ? error.message : 'Unknown error'}`
+    );
+  }
 }
 
 export async function generateResumePdf(

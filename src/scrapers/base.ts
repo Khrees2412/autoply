@@ -1,4 +1,5 @@
 import { chromium, type Browser, type Page, type BrowserContext } from 'playwright';
+import { existsSync } from 'fs';
 import type { JobData, FormField, CustomQuestion, Platform, Profile, GeneratedDocuments } from '../types';
 import { configRepository } from '../db/repositories/config';
 import { FormFiller, type FormFillerOptions, type FillResult } from '../core/form-filler';
@@ -43,10 +44,12 @@ export abstract class BaseScraper {
     this.context = await this.browser.newContext({
       userAgent:
         'Mozilla/5.0 (Macintosh; Apple Silicon Mac OS X 14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      storageState: config.browser.storageState,
+      storageState: config.browser.storageState && existsSync(config.browser.storageState)
+        ? config.browser.storageState
+        : undefined,
       viewport: { width: 1920, height: 1080 },
-      locale: 'en-NG',
-      timezoneId: 'Africa/Lagos',
+      locale: Intl.DateTimeFormat().resolvedOptions().locale || 'en-US',
+      timezoneId: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
     });
 
     // Mask automation indicators
@@ -65,7 +68,7 @@ export abstract class BaseScraper {
 
       // Mock languages
       Object.defineProperty(navigator, 'languages', {
-        get: () => ['en-NG', 'en-GB', 'en'],
+        get: () => navigator.language ? [navigator.language, 'en'] : ['en'],
       });
 
       // Hide automation-related Chrome properties

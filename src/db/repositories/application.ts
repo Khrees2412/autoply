@@ -29,7 +29,7 @@ function rowToApplication(row: ApplicationRow): Application {
     status: row.status as ApplicationStatus,
     generated_resume: row.generated_resume ?? undefined,
     generated_cover_letter: row.generated_cover_letter ?? undefined,
-    form_data: row.form_data ? JSON.parse(row.form_data) : undefined,
+    form_data: row.form_data ? (() => { try { return JSON.parse(row.form_data!); } catch { return undefined; } })() : undefined,
     error_message: row.error_message ?? undefined,
     applied_at: row.applied_at ?? undefined,
     created_at: row.created_at,
@@ -60,7 +60,11 @@ export class ApplicationRepository {
       application.applied_at ?? null
     );
 
-    return this.findById(Number(result.lastInsertRowid))!;
+    const created = this.findById(Number(result.lastInsertRowid));
+    if (!created) {
+      throw new Error('Failed to retrieve application after creation');
+    }
+    return created;
   }
 
   findById(id: number): Application | null {
