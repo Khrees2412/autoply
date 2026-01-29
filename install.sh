@@ -63,7 +63,7 @@ DOWNLOAD_URL="https://github.com/$REPO/releases/download/nightly/$ASSET_NAME"
 
 # Download to temp
 TMP_FILE=$(mktemp)
-if ! curl -fsSL --http1.1 "$DOWNLOAD_URL" -o "$TMP_FILE"; then
+if ! curl -fL --http1.1 --progress-bar "$DOWNLOAD_URL" -o "$TMP_FILE"; then
   error "Failed to download from $DOWNLOAD_URL"
 fi
 
