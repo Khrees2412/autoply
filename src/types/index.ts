@@ -10,7 +10,8 @@ export type Platform =
   | 'pinpoint'
   | 'teamtailor'
   | 'workday'
-  | 'ashby';
+  | 'ashby'
+  | 'generic';
 
 export const SUPPORTED_PLATFORMS: Record<Platform, RegExp> = {
   greenhouse: /boards\.greenhouse\.io/,
@@ -22,6 +23,7 @@ export const SUPPORTED_PLATFORMS: Record<Platform, RegExp> = {
   teamtailor: /\.teamtailor\.com/,
   workday: /\.myworkdayjobs\.com|workday\.com\/.*\/job/,
   ashby: /jobs\.ashbyhq\.com/,
+  generic: /.*/
 };
 
 // ============ Profile Schemas ============

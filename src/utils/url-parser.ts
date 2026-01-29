@@ -31,16 +31,8 @@ export function parseJobUrl(url: string): ParsedUrl {
     };
   }
 
-  // Detect platform
-  const platform = detectPlatform(url);
-  if (!platform) {
-    return {
-      url,
-      platform: 'greenhouse' as Platform,
-      isValid: false,
-      error: `Unsupported platform. Supported platforms: ${Object.keys(SUPPORTED_PLATFORMS).join(', ')}`,
-    };
-  }
+  // Detect platform, fall back to generic for unknown platforms
+  const platform = detectPlatform(url) ?? 'generic';
 
   return {
     url,
@@ -77,6 +69,7 @@ export function getPlatformExamples(): Record<Platform, string> {
     teamtailor: 'https://company.teamtailor.com/jobs/12345',
     workday: 'https://company.myworkdayjobs.com/en-US/External/job/12345',
     ashby: 'https://jobs.ashbyhq.com/company/job-id',
+    generic: 'https://company.com/careers/job/12345',
   };
 }
 

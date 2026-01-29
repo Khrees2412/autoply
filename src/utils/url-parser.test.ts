@@ -84,10 +84,10 @@ describe('url-parser', () => {
       expect(result.error).toBe('URL must use HTTP or HTTPS protocol');
     });
 
-    test('rejects unsupported platform', () => {
+    test('falls back to generic for unknown platform', () => {
       const result = parseJobUrl('https://example.com/jobs/12345');
-      expect(result.isValid).toBe(false);
-      expect(result.error).toContain('Unsupported platform');
+      expect(result.isValid).toBe(true);
+      expect(result.platform).toBe('generic');
     });
 
     test('handles URLs with query parameters', () => {
@@ -162,12 +162,12 @@ describe('url-parser', () => {
       expect(detectPlatform('https://jobs.ashbyhq.com/company')).toBe('ashby');
     });
 
-    test('returns null for unsupported platform', () => {
-      expect(detectPlatform('https://example.com/jobs')).toBeNull();
+    test('falls back to generic for unknown platform', () => {
+      expect(detectPlatform('https://example.com/jobs')).toBe('generic');
     });
 
-    test('returns null for empty string', () => {
-      expect(detectPlatform('')).toBeNull();
+    test('falls back to generic for empty string', () => {
+      expect(detectPlatform('')).toBe('generic');
     });
   });
 
@@ -180,8 +180,8 @@ describe('url-parser', () => {
       expect(isValidJobUrl('not-a-url')).toBe(false);
     });
 
-    test('returns false for unsupported platform', () => {
-      expect(isValidJobUrl('https://example.com/jobs')).toBe(false);
+    test('returns true for unknown platform (generic fallback)', () => {
+      expect(isValidJobUrl('https://example.com/jobs')).toBe(true);
     });
   });
 
@@ -197,7 +197,8 @@ describe('url-parser', () => {
       expect(platforms).toContain('teamtailor');
       expect(platforms).toContain('workday');
       expect(platforms).toContain('ashby');
-      expect(platforms).toHaveLength(9);
+      expect(platforms).toContain('generic');
+      expect(platforms).toHaveLength(10);
     });
   });
 
@@ -236,14 +237,14 @@ describe('url-parser', () => {
 
       const result = validateUrls(urls);
 
-      expect(result.valid).toHaveLength(2);
-      expect(result.invalid).toHaveLength(2);
+      expect(result.valid).toHaveLength(3);
+      expect(result.invalid).toHaveLength(1);
 
       expect(result.valid[0].platform).toBe('greenhouse');
       expect(result.valid[1].platform).toBe('lever');
+      expect(result.valid[2].platform).toBe('generic');
 
       expect(result.invalid[0].error).toBe('Invalid URL format');
-      expect(result.invalid[1].error).toContain('Unsupported platform');
     });
 
     test('handles empty array', () => {
@@ -263,12 +264,13 @@ describe('url-parser', () => {
       expect(result.invalid).toHaveLength(0);
     });
 
-    test('handles all invalid URLs', () => {
+    test('handles mix of invalid and generic URLs', () => {
       const urls = ['not-a-url', 'https://example.com/jobs'];
 
       const result = validateUrls(urls);
-      expect(result.valid).toHaveLength(0);
-      expect(result.invalid).toHaveLength(2);
+      expect(result.valid).toHaveLength(1);
+      expect(result.valid[0].platform).toBe('generic');
+      expect(result.invalid).toHaveLength(1);
     });
   });
 });

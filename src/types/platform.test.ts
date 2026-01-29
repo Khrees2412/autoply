@@ -227,11 +227,13 @@ describe('SUPPORTED_PLATFORMS regex patterns', () => {
         teamtailor: 'https://company.teamtailor.com/jobs/software-engineer',
         workday: 'https://workday.wd5.myworkdayjobs.com/Workday',
         ashby: 'https://jobs.ashbyhq.com/ashby',
+        generic: 'https://careers.somecompany.com/jobs/12345',
       };
 
       for (const [platform, url] of Object.entries(testUrls)) {
+        if (platform === 'generic') continue;
         const matchingPlatforms = Object.entries(SUPPORTED_PLATFORMS)
-          .filter(([_, regex]) => regex.test(url))
+          .filter(([p, regex]) => p !== 'generic' && regex.test(url))
           .map(([p, _]) => p);
 
         expect(matchingPlatforms).toHaveLength(1);

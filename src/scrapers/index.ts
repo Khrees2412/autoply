@@ -9,6 +9,7 @@ import { PinpointScraper } from './pinpoint';
 import { TeamtailorScraper } from './teamtailor';
 import { WorkdayScraper } from './workday';
 import { AshbyScraper } from './ashby';
+import { GenericScraper } from './generic';
 
 const scraperMap: Record<Platform, new () => BaseScraper> = {
   greenhouse: GreenhouseScraper,
@@ -20,6 +21,7 @@ const scraperMap: Record<Platform, new () => BaseScraper> = {
   teamtailor: TeamtailorScraper,
   workday: WorkdayScraper,
   ashby: AshbyScraper,
+  generic: GenericScraper,
 };
 
 export function createScraper(platform: Platform): BaseScraper {
@@ -46,6 +48,7 @@ export {
   TeamtailorScraper,
   WorkdayScraper,
   AshbyScraper,
+  GenericScraper,
 };
 
 export type { SubmissionResult, SubmissionOptions } from './base';
