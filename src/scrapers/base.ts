@@ -1,4 +1,4 @@
-import { chromium, type Browser, type Page, type BrowserContext } from 'playwright';
+import type { Browser, Page, BrowserContext } from 'playwright';
 import { existsSync } from 'fs';
 import type { JobData, FormField, CustomQuestion, Platform, Profile, GeneratedDocuments } from '../types';
 import { configRepository } from '../db/repositories/config';
@@ -34,6 +34,7 @@ export abstract class BaseScraper {
 
   async initialize(): Promise<void> {
     const config = configRepository.loadAppConfig();
+    const { chromium } = await import('playwright');
     this.browser = await chromium.launch({
       headless: config.browser.headless,
       args: [

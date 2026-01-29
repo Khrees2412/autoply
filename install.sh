@@ -2,8 +2,14 @@
 set -e
 
 REPO="khrees2412/autoply"
-INSTALL_DIR="/usr/local/bin"
 BINARY_NAME="autoply"
+
+# Prefer ~/.local/bin if it's in PATH, otherwise fall back to /usr/local/bin
+if echo "$PATH" | tr ':' '\n' | grep -qx "$HOME/.local/bin"; then
+  INSTALL_DIR="$HOME/.local/bin"
+else
+  INSTALL_DIR="/usr/local/bin"
+fi
 
 # Colors
 RED='\033[0;31m'
@@ -83,8 +89,10 @@ if command -v autoply &> /dev/null; then
   echo ""
   info "Successfully installed autoply!"
   echo ""
-  echo "  Run 'autoply --help' to get started"
-  echo "  Run 'autoply init' to initialize your profile"
+  echo "  Next steps:"
+  echo "    1. Install Playwright browsers: bunx playwright install chromium"
+  echo "    2. Run 'autoply init' to set up your profile"
+  echo "    3. Run 'autoply --help' for all commands"
   echo ""
 else
   warn "Installed but 'autoply' not found in PATH. You may need to add $INSTALL_DIR to your PATH."

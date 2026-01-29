@@ -1,16 +1,39 @@
-# Autoply
+<p align="center">
+  <h1 align="center">Autoply</h1>
+  <p align="center">Apply to jobs from your terminal. AI-generated resumes, cover letters, and form submissions — fully automated.</p>
+</p>
 
-AI-powered CLI that automates job applications. It scrapes job postings, generates tailored resumes and cover letters, fills out forms, and submits applications — all from your terminal.
+<p align="center">
+  <a href="#quick-start">Quick Start</a> ·
+  <a href="#usage">Usage</a> ·
+  <a href="#supported-platforms">Platforms</a> ·
+  <a href="#configuration">Configuration</a> ·
+  <a href="#development">Development</a>
+</p>
 
-## Installation
+---
 
-### Quick Install
+## Quick Start
+
+### Prerequisites
+
+- [Bun](https://bun.sh) runtime — `curl -fsSL https://bun.sh/install | bash`
+
+### Install
 
 ```bash
-curl -fsSL https://autoply.khrees.com/install | bash
+curl -fsL https://autoply.khrees.com/install | bash
+bunx playwright install chromium
 ```
 
-### From Source
+Then set up your profile:
+
+```bash
+autoply init
+```
+
+<details>
+<summary><strong>Install from source</strong></summary>
 
 ```bash
 git clone https://github.com/khrees2412/autoply.git
@@ -21,23 +44,97 @@ bun run build
 mv dist/autoply /usr/local/bin/
 ```
 
-> **Requires [Bun](https://bun.sh)** — install with `curl -fsSL https://bun.sh/install | bash`
+</details>
 
-## Setup
+---
 
-### 1. Create your profile
+## Usage
+
+### Apply to a job
 
 ```bash
-autoply init
+autoply apply https://boards.greenhouse.io/company/jobs/123456
 ```
 
-This walks you through entering your name, contact info, skills, work experience, education, and job preferences. Everything is stored locally in `~/.autoply/autoply.db`.
+Autoply scrapes the posting, generates a tailored resume and cover letter, fills out the application form, and submits it.
 
-### 2. Configure an AI provider
+### Apply in bulk
 
-Autoply needs an AI provider to generate documents. Choose one:
+```bash
+# Pass multiple URLs
+autoply apply https://job1.com https://job2.com https://job3.com
 
-**Cloud providers** (require API keys):
+# Or read from a file (one URL per line)
+autoply apply -f jobs.txt
+```
+
+### Dry run
+
+Generate documents without submitting:
+
+```bash
+autoply apply -d https://boards.greenhouse.io/company/jobs/123456
+```
+
+### Generate documents only
+
+```bash
+autoply generate resume https://boards.greenhouse.io/company/jobs/123456
+autoply generate cover-letter https://boards.greenhouse.io/company/jobs/123456
+autoply generate both https://boards.greenhouse.io/company/jobs/123456 -d ./output
+```
+
+### View history
+
+```bash
+autoply history                  # All applications
+autoply history -s submitted     # Filter by status
+autoply history -c "Anthropic"   # Search by company
+```
+
+### Manage your profile
+
+```bash
+autoply profile show
+autoply profile edit
+autoply profile delete
+```
+
+### Save a browser session
+
+For platforms that require login (e.g. LinkedIn):
+
+```bash
+autoply login linkedin
+```
+
+A browser window opens — log in manually, and the session is saved for future use.
+
+---
+
+## Supported Platforms
+
+| Platform | URL Pattern |
+|---|---|
+| Greenhouse | `boards.greenhouse.io/*` |
+| LinkedIn | `linkedin.com/jobs/*` |
+| Lever | `jobs.lever.co/*` |
+| Workday | `*.myworkdayjobs.com/*` |
+| Ashby | `jobs.ashbyhq.com/*` |
+| Jobvite | `jobs.jobvite.com/*` |
+| SmartRecruiters | `jobs.smartrecruiters.com/*` |
+| Pinpoint | `*.pinpointhq.com/*` |
+| Teamtailor | `*.teamtailor.com/*` |
+
+---
+
+## Configuration
+
+### AI Provider
+
+Autoply uses an AI provider to generate resumes and cover letters. Set one up before applying.
+
+**Cloud providers:**
 
 ```bash
 # Anthropic
@@ -53,7 +150,7 @@ autoply config set ai.provider google
 autoply config set ai.model gemini-pro-3
 ```
 
-Set your API key as an environment variable. Add one of these to your `.env` file in the project root, or export in your shell profile:
+Set your API key as an environment variable — add to your `.env` or shell profile:
 
 ```bash
 ANTHROPIC_API_KEY=sk-ant-...
@@ -72,72 +169,13 @@ autoply config set ai.model llama3.2
 autoply config set ai.provider lmstudio
 ```
 
-Make sure the local server is running before using Autoply.
-
-### 3. Verify it works
+Verify your setup:
 
 ```bash
 autoply config test
 ```
 
-### 4. (Optional) Save a browser session
-
-For platforms that require login (e.g. LinkedIn):
-
-```bash
-autoply login linkedin
-```
-
-This opens a browser — log in manually, and the session is saved for future use.
-
-## Usage
-
-### Apply to a job
-
-```bash
-autoply apply https://boards.greenhouse.io/company/jobs/123456
-```
-
-### Apply to multiple jobs
-
-```bash
-autoply apply https://job1.com https://job2.com https://job3.com
-
-# Or from a file (one URL per line)
-autoply apply -f jobs.txt
-```
-
-### Dry run (generate documents without submitting)
-
-```bash
-autoply apply -d https://boards.greenhouse.io/company/jobs/123456
-```
-
-### Generate documents only
-
-```bash
-autoply generate resume https://boards.greenhouse.io/company/jobs/123456
-autoply generate cover-letter https://boards.greenhouse.io/company/jobs/123456
-autoply generate both https://boards.greenhouse.io/company/jobs/123456 -d ./output
-```
-
-### View application history
-
-```bash
-autoply history
-autoply history -s submitted
-autoply history -c "Anthropic"
-```
-
-### Manage your profile
-
-```bash
-autoply profile show
-autoply profile edit
-autoply profile delete
-```
-
-### Configuration
+### All Options
 
 ```bash
 autoply config list              # Show all settings
@@ -145,36 +183,21 @@ autoply config set <key> <value> # Set a value
 autoply config get <key>         # Get a value
 autoply config reset             # Reset to defaults
 autoply config providers         # List AI providers
-autoply config test              # Test AI connection
 ```
 
-**All config keys:**
-
 | Key | Default | Description |
-|-----|---------|-------------|
-| `ai.provider` | `ollama` | AI provider (`openai`, `anthropic`, `google`, `ollama`, `lmstudio`) |
+|---|---|---|
+| `ai.provider` | `ollama` | AI provider |
 | `ai.model` | varies | Model name |
 | `ai.baseUrl` | varies | API base URL (local providers) |
 | `ai.temperature` | `0.7` | Generation temperature |
 | `browser.headless` | `false` | Run browser without UI |
 | `browser.timeout` | `30000` | Browser timeout (ms) |
-| `application.autoSubmit` | `false` | Auto-submit after generating docs |
+| `application.autoSubmit` | `false` | Auto-submit after form fill |
 | `application.saveScreenshots` | `true` | Save screenshots on submission |
 | `application.retryAttempts` | `3` | Retry count for failed operations |
 
-## Supported Platforms
-
-| Platform | URL Pattern |
-|----------|-------------|
-| Greenhouse | `boards.greenhouse.io/*` |
-| LinkedIn | `linkedin.com/jobs/*` |
-| Lever | `jobs.lever.co/*` |
-| Workday | `*.myworkdayjobs.com/*` |
-| Ashby | `jobs.ashbyhq.com/*` |
-| Jobvite | `jobs.jobvite.com/*` |
-| SmartRecruiters | `jobs.smartrecruiters.com/*` |
-| Pinpoint | `*.pinpointhq.com/*` |
-| Teamtailor | `*.teamtailor.com/*` |
+---
 
 ## Data Storage
 
@@ -182,12 +205,14 @@ All data is stored locally in `~/.autoply/`:
 
 ```
 ~/.autoply/
-├── autoply.db           # SQLite database (profiles, applications, config)
+├── autoply.db           # SQLite database
 ├── config.json          # App configuration
-├── browser-state.json   # Saved browser session (after login)
+├── browser-state.json   # Saved browser session
 ├── documents/           # Generated resumes and cover letters
 └── screenshots/         # Submission screenshots
 ```
+
+---
 
 ## Development
 
@@ -207,6 +232,8 @@ bun run build:mac-intel  # macOS Intel
 bun run build:linux      # Linux x64
 bun run build:windows    # Windows x64
 ```
+
+---
 
 ## License
 

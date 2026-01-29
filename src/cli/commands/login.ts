@@ -1,5 +1,4 @@
 import { Command } from 'commander';
-import { chromium } from 'playwright';
 import { join } from 'path';
 import { getAutoplyDir } from '../../db';
 import { configRepository } from '../../db/repositories/config';
@@ -27,6 +26,7 @@ export const loginCommand = new Command('login')
     console.log('Please login manually in the browser window.');
     console.log('The browser will close automatically after you login.\n');
 
+    const { chromium } = await import('playwright');
     const browser = await chromium.launch({
       headless: false,
       args: [
