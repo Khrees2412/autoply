@@ -1,13 +1,23 @@
 import chalk from 'chalk';
 import ora, { type Ora } from 'ora';
 
+let _verbose = false;
+
+export function setVerbose(enabled: boolean) {
+  _verbose = enabled;
+}
+
+export function isVerbose(): boolean {
+  return _verbose || !!process.env.DEBUG;
+}
+
 export const logger = {
   info: (message: string) => console.log(chalk.blue('ℹ'), message),
   success: (message: string) => console.log(chalk.green('✔'), message),
   warning: (message: string) => console.log(chalk.yellow('⚠'), message),
   error: (message: string) => console.log(chalk.red('✖'), message),
   debug: (message: string) => {
-    if (process.env.DEBUG) {
+    if (_verbose || process.env.DEBUG) {
       console.log(chalk.gray('⚙'), message);
     }
   },

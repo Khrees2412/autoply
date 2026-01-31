@@ -1,16 +1,29 @@
-import { input, confirm, editor } from '@inquirer/prompts';
-import type { Profile, Education, Preferences } from '../../types';
+import { input, confirm, select } from '@inquirer/prompts';
 
-export async function promptForProfile(): Promise<Omit<Profile, 'id' | 'created_at' | 'updated_at'>> {
+import type { Profile, Education, Preferences, Experience } from '../../types';
+import { extractTextFromFile, validateDocumentPath, getSupportedFormatsDescription } from '../../utils/document-extractor';
+
+type AIExtractedProfile = Omit<Profile, 'id' | 'created_at' | 'updated_at' | 'base_resume' | 'base_cover_letter' | 'preferences'>;
+
+interface ProfilePromptOptions {
+  resumeText?: string;
+  coverLetterText?: string;
+  aiDefaults?: AIExtractedProfile;
+}
+
+export async function promptForProfile(options: ProfilePromptOptions = {}): Promise<Omit<Profile, 'id' | 'created_at' | 'updated_at'>> {
+  const defaults = options.aiDefaults;
   console.log('\n📝 Let\'s set up your profile\n');
 
   const name = await input({
     message: 'Full name:',
+    default: defaults?.name,
     validate: (value) => (value.length > 0 ? true : 'Name is required'),
   });
 
   const email = await input({
     message: 'Email address:',
+    default: defaults?.email,
     validate: (value) => {
       if (!value.includes('@')) return 'Please enter a valid email';
       return true;
@@ -19,70 +32,71 @@ export async function promptForProfile(): Promise<Omit<Profile, 'id' | 'created_
 
   const phone = await input({
     message: 'Phone number (optional):',
+    default: defaults?.phone ?? '',
   });
 
   const location = await input({
     message: 'Location (City, Country):',
+    default: defaults?.location ?? '',
   });
 
   const linkedin_url = await input({
     message: 'LinkedIn URL (optional):',
+    default: defaults?.linkedin_url ?? '',
   });
 
   const github_url = await input({
     message: 'GitHub URL (optional):',
+    default: defaults?.github_url ?? '',
   });
 
   const portfolio_url = await input({
     message: 'Portfolio URL (optional):',
+    default: defaults?.portfolio_url ?? '',
   });
 
   // Skills
   const skillsInput = await input({
     message: 'Skills (comma-separated):',
+    default: defaults?.skills.join(', ') ?? '',
   });
   const skills = skillsInput
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
 
-  // Education
-  const education: Education[] = [];
-  const addEducation = await confirm({
-    message: 'Add education?',
-    default: true,
-  });
+  // Education - use AI extracted or prompt
+  let education: Education[] = defaults?.education ?? [];
+  if (!defaults?.education?.length) {
+    const addEducation = await confirm({
+      message: 'Add education?',
+      default: true,
+    });
 
-  if (addEducation) {
-    let addMore = true;
-    while (addMore) {
-      const edu = await promptForEducation();
-      education.push(edu);
-      addMore = await confirm({
-        message: 'Add another education entry?',
-        default: false,
-      });
+    if (addEducation) {
+      let addMore = true;
+      while (addMore) {
+        const edu = await promptForEducation();
+        education.push(edu);
+        addMore = await confirm({
+          message: 'Add another education entry?',
+          default: false,
+        });
+      }
     }
   }
+
+  // Experience - use AI extracted or empty
+  const experience: Experience[] = defaults?.experience ?? [];
 
   // Preferences
   const preferences = await promptForPreferences();
 
-  // Base resume (required)
-  const base_resume = await editor({
-    message: 'Enter your base resume (markdown format):',
-    validate: (value) =>
-      value && value.trim().length > 0 ? true : 'Base resume is required',
-  });
+  // Base resume
+  const base_resume = options.resumeText ?? await promptForDocument('resume');
 
-  // Base cover letter (required)
-  const base_cover_letter = await editor({
-    message: 'Enter your base cover letter template:',
-    validate: (value) =>
-      value && value.trim().length > 0
-        ? true
-        : 'Base cover letter template is required',
-  });
+  // Base cover letter
+  const base_cover_letter = options.coverLetterText ?? await promptForDocument('cover letter');
 
   return {
     name,
@@ -96,9 +110,82 @@ export async function promptForProfile(): Promise<Omit<Profile, 'id' | 'created_
     base_cover_letter,
     preferences,
     skills,
-    experience: [],
+    experience,
     education,
   };
+}
+
+async function promptForDocument(label: string): Promise<string> {
+  const method = await select({
+    message: `How would you like to provide your ${label}?`,
+    choices: [
+      { name: `Import from file (${getSupportedFormatsDescription()})`, value: 'file' },
+      { name: 'Paste text directly', value: 'paste' },
+      { name: 'Skip for now', value: 'skip' },
+    ],
+  });
+
+  if (method === 'skip') {
+    return '';
+  }
+
+  if (method === 'file') {
+    return promptDocumentViaFile(label);
+  }
+
+  return promptDocumentViaPaste(label);
+}
+
+async function promptDocumentViaFile(label: string): Promise<string> {
+  const filePath = await input({
+    message: `Path to ${label} file (drag & drop or type path):`,
+    validate: (value) => {
+      if (!value.trim()) return 'File path is required';
+      // Clean up path (remove surrounding quotes from drag-and-drop)
+      const cleaned = value.trim().replace(/^['"]|['"]$/g, '');
+      const validation = validateDocumentPath(cleaned);
+      if (!validation.valid) return validation.error!;
+      return true;
+    },
+  });
+
+  const cleanedPath = filePath.trim().replace(/^['"]|['"]$/g, '');
+  const result = await extractTextFromFile(cleanedPath);
+  if (!result.success) {
+    console.log(`\n  Failed to extract: ${result.error}`);
+    const retry = await select({
+      message: 'What would you like to do?',
+      choices: [
+        { name: 'Try another file', value: 'retry' },
+        { name: 'Paste text instead', value: 'paste' },
+        { name: 'Skip for now', value: 'skip' },
+      ],
+    });
+    if (retry === 'retry') return promptDocumentViaFile(label);
+    if (retry === 'skip') return '';
+    return promptDocumentViaPaste(label);
+  }
+
+  console.log(`\n  ✓ Extracted ${result.content!.length} characters from ${result.fileType} file.\n`);
+  return result.content!;
+}
+
+async function promptDocumentViaPaste(label: string): Promise<string> {
+  console.log(`\n  Paste your ${label} below, then press Enter twice to finish:\n`);
+  const text = await input({
+    message: `${label}:`,
+  });
+
+  if (!text.trim()) {
+    const retry = await confirm({
+      message: `No ${label} text provided. Skip?`,
+      default: true,
+    });
+    if (retry) return '';
+    return promptDocumentViaPaste(label);
+  }
+
+  return text.trim();
 }
 
 async function promptForEducation(): Promise<Education> {
@@ -138,7 +225,7 @@ async function promptForEducation(): Promise<Education> {
   };
 }
 
-async function promptForPreferences(): Promise<Preferences> {
+export async function promptForPreferences(): Promise<Preferences> {
   const remote_only = await confirm({
     message: 'Only interested in remote jobs?',
     default: false,

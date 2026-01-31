@@ -1,9 +1,19 @@
 import type { QueueItem } from '../types';
 import { randomUUID } from 'crypto';
+import { join } from 'path';
+import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
+import { getAutoplyDir, ensureAutoplyDir } from '../db';
+
+const QUEUE_FILE = 'queue.json';
 
 export class ApplicationQueue {
   private items: Map<string, QueueItem> = new Map();
   private processing = false;
+  private persistPath: string;
+
+  constructor() {
+    this.persistPath = join(getAutoplyDir(), QUEUE_FILE);
+  }
 
   add(url: string): QueueItem {
     const item: QueueItem = {
@@ -48,6 +58,7 @@ export class ApplicationQueue {
     if (item) {
       item.status = status;
       if (error) item.error = error;
+      this.persist();
     }
   }
 
@@ -55,15 +66,19 @@ export class ApplicationQueue {
     const item = this.items.get(id);
     if (item) {
       item.result = result;
+      this.persist();
     }
   }
 
   remove(id: string): boolean {
-    return this.items.delete(id);
+    const result = this.items.delete(id);
+    if (result) this.persist();
+    return result;
   }
 
   clear(): void {
     this.items.clear();
+    this.deletePersisted();
   }
 
   size(): number {
@@ -105,6 +120,76 @@ export class ApplicationQueue {
       completed: all.filter((i) => i.status === 'completed').length,
       failed: all.filter((i) => i.status === 'failed').length,
     };
+  }
+
+  persist(): void {
+    try {
+      ensureAutoplyDir();
+      const data = {
+        items: Array.from(this.items.entries()),
+        processing: this.processing,
+        savedAt: new Date().toISOString(),
+      };
+      writeFileSync(this.persistPath, JSON.stringify(data, null, 2));
+    } catch {
+      // Persistence is best-effort
+    }
+  }
+
+  load(): boolean {
+    try {
+      if (!existsSync(this.persistPath)) return false;
+
+      const content = readFileSync(this.persistPath, 'utf-8');
+      const data = JSON.parse(content);
+
+      if (!data.items || !Array.isArray(data.items)) return false;
+
+      this.items = new Map(data.items);
+
+      // Reset any "processing" items to "pending" (interrupted)
+      for (const item of this.items.values()) {
+        if (item.status === 'processing') {
+          item.status = 'pending';
+        }
+      }
+
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  deletePersisted(): void {
+    try {
+      if (existsSync(this.persistPath)) {
+        unlinkSync(this.persistPath);
+      }
+    } catch {
+      // Best-effort
+    }
+  }
+
+  hasPersisted(): boolean {
+    return existsSync(this.persistPath);
+  }
+
+  getPersistedInfo(): { pending: number; savedAt: string } | null {
+    try {
+      if (!existsSync(this.persistPath)) return null;
+
+      const content = readFileSync(this.persistPath, 'utf-8');
+      const data = JSON.parse(content);
+
+      if (!data.items || !Array.isArray(data.items)) return null;
+
+      const pending = data.items.filter(
+        ([_, item]: [string, QueueItem]) => item.status === 'pending' || item.status === 'processing'
+      ).length;
+      return { pending, savedAt: data.savedAt };
+    } catch {
+      return null;
+    }
   }
 }
 

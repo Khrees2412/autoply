@@ -9,6 +9,7 @@ import { PinpointScraper } from './pinpoint';
 import { TeamtailorScraper } from './teamtailor';
 import { WorkdayScraper } from './workday';
 import { AshbyScraper } from './ashby';
+import { BambooHRScraper } from './bamboohr';
 import { GenericScraper } from './generic';
 
 const scraperMap: Record<Platform, new () => BaseScraper> = {
@@ -21,6 +22,7 @@ const scraperMap: Record<Platform, new () => BaseScraper> = {
   teamtailor: TeamtailorScraper,
   workday: WorkdayScraper,
   ashby: AshbyScraper,
+  bamboohr: BambooHRScraper,
   generic: GenericScraper,
 };
 
@@ -48,6 +50,7 @@ export {
   TeamtailorScraper,
   WorkdayScraper,
   AshbyScraper,
+  BambooHRScraper,
   GenericScraper,
 };
 

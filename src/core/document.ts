@@ -1,6 +1,18 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { marked } from 'marked';
 
+export function generateDocumentFilename(
+  fullName: string,
+  documentType: 'resume' | 'cover_letter'
+): string {
+  const nameParts = fullName.trim().toLowerCase().split(/\s+/);
+  const firstName = nameParts[0] || 'unknown';
+  const lastName = nameParts[nameParts.length - 1] || 'user';
+  const randomId = Math.floor(Math.random() * 90 + 10); // 2-digit random ID (10-99)
+
+  return `${firstName}_${lastName}_${documentType}_${randomId}.pdf`;
+}
+
 export interface PDFGenerationOptions {
   title?: string;
   author?: string;

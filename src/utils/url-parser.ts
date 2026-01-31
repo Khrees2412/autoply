@@ -69,6 +69,7 @@ export function getPlatformExamples(): Record<Platform, string> {
     teamtailor: 'https://company.teamtailor.com/jobs/12345',
     workday: 'https://company.myworkdayjobs.com/en-US/External/job/12345',
     ashby: 'https://jobs.ashbyhq.com/company/job-id',
+    bamboohr: 'https://company.bamboohr.com/careers/123',
     generic: 'https://company.com/careers/job/12345',
   };
 }
@@ -80,6 +81,22 @@ export async function readUrlsFromFile(filePath: string): Promise<string[]> {
     .split('\n')
     .map((line) => line.trim())
     .filter((line) => line && !line.startsWith('#'));
+}
+
+export function normalizeUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    parsed.hash = '';
+    parsed.pathname = parsed.pathname.replace(/\/+$/, '') || '/';
+    const trackingParams = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'ref', 'fbclid', 'gclid', 'source'];
+    for (const param of trackingParams) {
+      parsed.searchParams.delete(param);
+    }
+    parsed.searchParams.sort();
+    return parsed.toString();
+  } catch {
+    return url;
+  }
 }
 
 export function validateUrls(urls: string[]): { valid: ParsedUrl[]; invalid: ParsedUrl[] } {

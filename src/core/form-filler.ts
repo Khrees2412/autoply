@@ -2,6 +2,7 @@ import type { Page } from 'playwright';
 import type { Profile, FormField, CustomQuestion, JobData } from '../types';
 import { join } from 'path';
 import { getAutoplyDir } from '../db';
+import { configRepository } from '../db/repositories/config';
 
 // Field matching patterns for common form fields
 const FIELD_PATTERNS = {
@@ -54,6 +55,10 @@ export interface FormFillerOptions {
   resumePath?: string;
   coverLetterPath?: string;
   answeredQuestions?: CustomQuestion[];
+  /** When true, prompt user for unfillable fields. Reads from config if not set. */
+  interactivePrompts?: boolean;
+  /** When true, skip all interactive prompts (e.g. --auto mode) */
+  autoMode?: boolean;
 }
 
 export interface FillResult {
@@ -89,6 +94,20 @@ export class FormFiller {
         const filled = await this.fillField(field);
         if (filled) {
           result.filledFields.push(field.label || field.name);
+        } else if (field.required && this.isInteractive()) {
+          // Field couldn't be auto-filled — ask the user
+          const userValue = await this.promptForField(field);
+          if (userValue) {
+            field.value = userValue;
+            const retryFilled = await this.fillField(field);
+            if (retryFilled) {
+              result.filledFields.push(field.label || field.name);
+            } else {
+              result.skippedFields.push(field.label || field.name);
+            }
+          } else {
+            result.skippedFields.push(field.label || field.name);
+          }
         } else {
           result.skippedFields.push(field.label || field.name);
         }
@@ -114,6 +133,20 @@ export class FormFiller {
         const filled = await this.fillQuestion(question);
         if (filled) {
           result.filledFields.push(question.question.slice(0, 50));
+        } else if (question.required && this.isInteractive()) {
+          // AI answer failed or wasn't provided — ask the user
+          const userAnswer = await this.promptForQuestion(question);
+          if (userAnswer) {
+            question.answer = userAnswer;
+            const retryFilled = await this.fillQuestion(question);
+            if (retryFilled) {
+              result.filledFields.push(question.question.slice(0, 50));
+            } else {
+              result.skippedFields.push(question.question.slice(0, 50));
+            }
+          } else {
+            result.skippedFields.push(question.question.slice(0, 50));
+          }
         } else {
           result.skippedFields.push(question.question.slice(0, 50));
         }
@@ -258,6 +291,13 @@ export class FormFiller {
     // If we have a pre-filled value from scraping
     if (field.value) {
       return field.value;
+    }
+
+    // Check cached answers from previous user input
+    const fieldLabel = field.label || field.name;
+    if (fieldLabel) {
+      const cached = this.getCachedAnswer(fieldLabel);
+      if (cached) return cached;
     }
 
     return null;
@@ -697,6 +737,119 @@ export class FormFiller {
   private async humanDelay(): Promise<void> {
     const delay = Math.floor(Math.random() * 300) + 100;
     await new Promise((resolve) => setTimeout(resolve, delay));
+  }
+
+  /** Check if interactive prompts are enabled */
+  private isInteractive(): boolean {
+    if (this.options.autoMode) return false;
+    if (this.options.interactivePrompts !== undefined) return this.options.interactivePrompts;
+    try {
+      const config = configRepository.loadAppConfig();
+      return config.application.interactivePrompts ?? true;
+    } catch {
+      return true;
+    }
+  }
+
+  /** Normalize a field label into a cache key */
+  private getCacheKey(label: string): string {
+    return label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+  }
+
+  /** Look up a cached answer for this field */
+  private getCachedAnswer(label: string): string | null {
+    try {
+      const config = configRepository.loadAppConfig();
+      const key = this.getCacheKey(label);
+      return config.cachedAnswers?.[key] ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Save a user-provided answer so they won't be asked again */
+  private saveCachedAnswer(label: string, value: string): void {
+    try {
+      const config = configRepository.loadAppConfig();
+      if (!config.cachedAnswers) config.cachedAnswers = {};
+      config.cachedAnswers[this.getCacheKey(label)] = value;
+      configRepository.saveAppConfig(config);
+    } catch {
+      // Non-critical — caching failure shouldn't block form filling
+    }
+  }
+
+  /** Prompt the user for a form field value, checking cache first */
+  private async promptForField(field: FormField): Promise<string | null> {
+    const label = field.label || field.name;
+    if (!label) return null;
+
+    // Check cache first
+    const cached = this.getCachedAnswer(label);
+    if (cached) return cached;
+
+    try {
+      const { input, select } = await import('@inquirer/prompts');
+
+      if (field.type === 'select' && field.options && field.options.length > 0) {
+        const answer = await select({
+          message: `  ${label}:`,
+          choices: field.options.map(opt => ({ name: opt, value: opt })),
+        });
+        this.saveCachedAnswer(label, answer);
+        return answer;
+      }
+
+      const answer = await input({
+        message: `  ${label}:`,
+      });
+
+      if (answer.trim()) {
+        this.saveCachedAnswer(label, answer.trim());
+        return answer.trim();
+      }
+
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Prompt the user for a custom question answer, checking cache first */
+  private async promptForQuestion(question: CustomQuestion): Promise<string | null> {
+    const label = question.question;
+
+    // Check cache first
+    const cached = this.getCachedAnswer(label);
+    if (cached) return cached;
+
+    try {
+      const { input, select } = await import('@inquirer/prompts');
+
+      console.log('');
+
+      if ((question.type === 'select' || question.type === 'radio') && question.options && question.options.length > 0) {
+        const answer = await select({
+          message: `  ${label}`,
+          choices: question.options.map(opt => ({ name: opt, value: opt })),
+        });
+        this.saveCachedAnswer(label, answer);
+        return answer;
+      }
+
+      const answer = await input({
+        message: `  ${label}`,
+      });
+
+      if (answer.trim()) {
+        this.saveCachedAnswer(label, answer.trim());
+        return answer.trim();
+      }
+
+      return null;
+    } catch {
+      return null;
+    }
   }
 }
 

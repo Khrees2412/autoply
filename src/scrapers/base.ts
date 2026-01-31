@@ -1,8 +1,9 @@
 import type { Browser, Page, BrowserContext } from 'playwright';
 import { existsSync } from 'fs';
-import type { JobData, FormField, CustomQuestion, Platform, Profile, GeneratedDocuments } from '../types';
+import type { JobData, FormField, CustomQuestion, Platform, Profile, GeneratedDocuments, AIProvider } from '../types';
 import { configRepository } from '../db/repositories/config';
 import { FormFiller, type FormFillerOptions, type FillResult } from '../core/form-filler';
+import { extractJobDataWithAI, mergeJobData } from '../ai/job-extractor';
 
 export interface SubmissionResult {
   success: boolean;
@@ -122,7 +123,7 @@ export abstract class BaseScraper {
     this.page = null;
   }
 
-  async scrape(url: string): Promise<JobData> {
+  async scrape(url: string, aiProvider?: AIProvider): Promise<JobData> {
     try {
       await this.initialize();
       if (!this.page) throw new Error('Browser not initialized');
@@ -142,11 +143,32 @@ export abstract class BaseScraper {
 
       await this.waitForContent();
 
-      const jobData = await this.extractJobData(url);
+      let jobData = await this.extractJobData(url);
+
+      // Use AI fallback if extraction was incomplete
+      if (aiProvider && this.needsAIFallback(jobData)) {
+        try {
+          const rawHtml = await this.page.content();
+          const extracted = await extractJobDataWithAI(aiProvider, rawHtml, url);
+          jobData = mergeJobData(jobData, extracted);
+        } catch {
+          // AI fallback failed, continue with original data
+        }
+      }
+
       return jobData;
     } finally {
       await this.cleanup();
     }
+  }
+
+  protected needsAIFallback(jobData: JobData): boolean {
+    return (
+      jobData.title === 'Unknown Position' ||
+      !jobData.title ||
+      !jobData.description ||
+      jobData.description.trim() === ''
+    );
   }
 
   protected abstract waitForContent(): Promise<void>;
