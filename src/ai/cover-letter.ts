@@ -88,7 +88,8 @@ export async function answerApplicationQuestion(
   provider: AIProvider,
   profile: Profile,
   jobData: JobData,
-  question: string
+  question: string,
+  options?: { type?: string; choices?: string[] }
 ): Promise<string> {
   const systemPrompt = `You help job applicants answer application questions in a warm, authentic voice.
 
@@ -98,12 +99,20 @@ Guidelines:
 - Be honest and genuine - don't oversell
 - Keep answers focused and appropriately brief
 - Show personality and enthusiasm without being over the top
-- Avoid corporate buzzwords and jargon`;
+- Avoid corporate buzzwords and jargon
+- For select/radio/dropdown questions: return EXACTLY one of the provided options, nothing else
+- For checkbox questions: return matching options separated by commas`;
+
+  let questionDetail = `"${question}"`;
+  if (options?.choices && options.choices.length > 0) {
+    questionDetail += `\nAvailable options: ${options.choices.join(', ')}`;
+    questionDetail += `\nIMPORTANT: Your answer must be exactly one of the above options.`;
+  }
 
   const prompt = `Based on the following candidate profile and job posting, please answer this application question:
 
 ## Question
-"${question}"
+${questionDetail}
 
 ## Candidate Profile
 Name: ${profile.name}
@@ -121,6 +130,104 @@ ${jobData.description.slice(0, 500)}...
 Please provide a concise, relevant answer to the question.`;
 
   return provider.generateText(prompt, systemPrompt);
+}
+
+import type { CustomQuestion } from '../types';
+
+export async function answerAllQuestions(
+  provider: AIProvider,
+  profile: Profile,
+  jobData: JobData,
+  questions: CustomQuestion[],
+  previousAnswers?: Array<{ question: string; answer: string }>
+): Promise<Map<string, string>> {
+  if (questions.length === 0) return new Map();
+
+  // For a single question, use the direct approach
+  if (questions.length === 1) {
+    const q = questions[0];
+    const answer = await answerApplicationQuestion(provider, profile, jobData, q.question, {
+      type: q.type,
+      choices: q.options,
+    });
+    return new Map([[q.question, answer]]);
+  }
+
+  // Batch all questions into one call for consistency
+  const systemPrompt = `You answer job application questions for a candidate. Return ONLY valid JSON — an array of objects with "question" and "answer" fields.
+
+Rules:
+- For select/radio/dropdown questions with options listed: answer must be EXACTLY one of the provided options
+- For text/textarea questions: give a concise, authentic answer (2-4 sentences)
+- Keep answers consistent with each other (don't contradict across questions)
+- Sound human, not robotic
+- Draw from the candidate's actual experience`;
+
+  const questionsBlock = questions.map((q, i) => {
+    let block = `${i + 1}. "${q.question}" (type: ${q.type})`;
+    if (q.options && q.options.length > 0) {
+      block += `\n   Options: ${q.options.join(', ')}`;
+    }
+    return block;
+  }).join('\n');
+
+  const examplesBlock = previousAnswers && previousAnswers.length > 0
+    ? `\n## Examples of how this candidate has answered questions before:\n${previousAnswers.slice(0, 5).map(a => `Q: "${a.question}"\nA: "${a.answer}"`).join('\n\n')}\n`
+    : '';
+
+  const prompt = `Answer these application questions for the candidate.
+
+## Candidate
+Name: ${profile.name}
+Skills: ${profile.skills.join(', ')}
+Experience: ${profile.experience.slice(0, 3).map(e => `${e.title} at ${e.company}: ${e.highlights.slice(0, 2).join('; ')}`).join(' | ')}
+${examplesBlock}
+## Job
+${jobData.title} at ${jobData.company}
+${jobData.description.slice(0, 1000)}
+
+## Questions
+${questionsBlock}
+
+Return JSON array: [{"question": "...", "answer": "..."}, ...]`;
+
+  const response = await provider.generateText(prompt, systemPrompt);
+  const cleaned = response.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
+
+  const results = new Map<string, string>();
+
+  try {
+    const parsed = JSON.parse(cleaned);
+    if (Array.isArray(parsed)) {
+      for (const item of parsed) {
+        if (item.question && item.answer) {
+          results.set(String(item.question), String(item.answer));
+        }
+      }
+    }
+  } catch {
+    // Fallback: answer each question individually
+    for (const q of questions) {
+      const answer = await answerApplicationQuestion(provider, profile, jobData, q.question, {
+        type: q.type,
+        choices: q.options,
+      });
+      results.set(q.question, answer);
+    }
+  }
+
+  // Fill any missing answers individually
+  for (const q of questions) {
+    if (!results.has(q.question)) {
+      const answer = await answerApplicationQuestion(provider, profile, jobData, q.question, {
+        type: q.type,
+        choices: q.options,
+      });
+      results.set(q.question, answer);
+    }
+  }
+
+  return results;
 }
 
 export async function answerMultipleQuestions(
