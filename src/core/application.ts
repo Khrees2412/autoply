@@ -3,12 +3,14 @@ import { parseJobUrl } from '../utils/url-parser';
 import { scrapeJob, createScraper } from '../scrapers';
 import { createAIProvider } from '../ai/provider';
 import { tailorResume } from '../ai/resume';
-import { generateCoverLetter, answerApplicationQuestion } from '../ai/cover-letter';
+import { generateCoverLetter, answerAllQuestions } from '../ai/cover-letter';
+import { evaluateJobFit, type JobFitResult } from '../ai/job-matcher';
+export type { JobFitResult } from '../ai/job-matcher';
 import { profileRepository } from '../db/repositories/profile';
 import { applicationRepository } from '../db/repositories/application';
 import { configRepository } from '../db/repositories/config';
 import { ApplicationQueue } from './queue';
-import { generateResumePdf, generateCoverLetterPdf } from './document';
+import { generateResumePdf, generateCoverLetterPdf, generateDocumentFilename } from './document';
 import { logger, createSpinner } from '../utils/logger';
 import { join } from 'path';
 import { mkdir } from 'fs/promises';
@@ -19,12 +21,14 @@ export interface ApplicationResult {
   application?: Application;
   error?: string;
   documents?: GeneratedDocuments;
+  fitResult?: JobFitResult;
 }
 
 export interface ApplyOptions {
   dryRun?: boolean;
   profile?: Profile;
   generateOnly?: boolean;
+  autoMode?: boolean;
 }
 
 export class ApplicationOrchestrator {
@@ -35,7 +39,7 @@ export class ApplicationOrchestrator {
   }
 
   async applyToJob(url: string, options: ApplyOptions = {}): Promise<ApplicationResult> {
-    const { dryRun = false, generateOnly = false } = options;
+    const { dryRun = false, generateOnly = false, autoMode = false } = options;
 
     // Validate URL
     const parsedUrl = parseJobUrl(url);
@@ -54,13 +58,15 @@ export class ApplicationOrchestrator {
 
     let jobData: JobData;
     try {
+      logger.debug(`Scraping ${parsedUrl.platform} job at ${url}`);
       jobData = await scrapeJob(url, parsedUrl.platform);
       spinner.succeed(`Scraped: ${jobData.title} at ${jobData.company}`);
     } catch (error) {
-      spinner.fail('Failed to scrape job posting');
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      spinner.fail(`Failed to scrape job from ${parsedUrl.platform}`);
       return {
         success: false,
-        error: `Scraping failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        error: `[${parsedUrl.platform}] Scraping failed for ${url}: ${msg}. Check that the URL is accessible in a browser.`,
       };
     }
 
@@ -72,7 +78,35 @@ export class ApplicationOrchestrator {
       };
     }
 
+    // Evaluate job fit
+    let fitResult: JobFitResult | undefined;
+    try {
+      const provider = createAIProvider();
+      if (await provider.isAvailable()) {
+        spinner.start('Evaluating job fit...');
+        fitResult = await evaluateJobFit(provider, profile, jobData);
+        spinner.succeed(`Fit score: ${fitResult.score}% (${fitResult.recommendation})`);
+
+        if (fitResult.strongMatches.length > 0) {
+          logger.info(`  Strong: ${fitResult.strongMatches.slice(0, 3).join(', ')}`);
+        }
+        if (fitResult.missingSkills.length > 0) {
+          logger.info(`  Gaps: ${fitResult.missingSkills.slice(0, 3).join(', ')}`);
+        }
+
+        // Check minimum fit score threshold
+        const config = configRepository.loadAppConfig();
+        if (config.application.minFitScore && fitResult.score < config.application.minFitScore) {
+          logger.warning(`Skipping: fit score ${fitResult.score}% below threshold ${config.application.minFitScore}%`);
+          return { success: false, error: `Fit score below threshold`, fitResult };
+        }
+      }
+    } catch {
+      // Fit evaluation is optional, continue without it
+    }
+
     // Generate documents
+    logger.debug(`Generating documents for ${jobData.title} at ${jobData.company}`);
     spinner.start('Generating tailored resume...');
     let documents: GeneratedDocuments;
     try {
@@ -92,10 +126,11 @@ export class ApplicationOrchestrator {
 
       documents = { resume, coverLetter };
     } catch (error) {
-      spinner.fail('Document generation failed');
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      spinner.fail(`Document generation failed for ${url}`);
       return {
         success: false,
-        error: `AI generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        error: `[${parsedUrl.platform}] AI generation failed for ${url}: ${msg}. Check your AI provider is running ("ollama serve" or API key set).`,
       };
     }
 
@@ -123,7 +158,7 @@ export class ApplicationOrchestrator {
         generated_cover_letter: documents.coverLetter,
       });
 
-      return { success: true, application, documents };
+      return { success: true, application, documents, fitResult };
     }
 
     // Answer custom questions
@@ -131,14 +166,36 @@ export class ApplicationOrchestrator {
       spinner.start(`Answering ${jobData.custom_questions.length} custom questions...`);
       try {
         const provider = createAIProvider();
-        for (const question of jobData.custom_questions) {
-          if (!question.answer) {
-            question.answer = await answerApplicationQuestion(
-              provider,
-              profile,
-              jobData,
-              question.question
-            );
+
+        // Get previous answers from DB for few-shot learning
+        const previousApps = applicationRepository.findAll({
+          profile_id: profile.id,
+          status: 'submitted',
+        });
+        const previousAnswers: Array<{ question: string; answer: string }> = [];
+        for (const app of previousApps.slice(0, 5)) {
+          const questions = app.form_data?.questions as
+            | Array<{ question: string; answer?: string }>
+            | undefined;
+          if (questions) {
+            for (const q of questions) {
+              if (q.answer && previousAnswers.length < 10) {
+                previousAnswers.push({ question: q.question, answer: q.answer });
+              }
+            }
+          }
+        }
+
+        const answers = await answerAllQuestions(
+          provider,
+          profile,
+          jobData,
+          jobData.custom_questions,
+          previousAnswers
+        );
+        for (const q of jobData.custom_questions) {
+          if (!q.answer) {
+            q.answer = answers.get(q.question);
           }
         }
         spinner.succeed('Custom questions answered');
@@ -166,6 +223,7 @@ export class ApplicationOrchestrator {
     // Check if auto-submit is enabled
     const config = configRepository.loadAppConfig();
     if (config.application.autoSubmit) {
+      logger.debug(`Submitting application to ${parsedUrl.platform} at ${url}`);
       spinner.start('Submitting application...');
       try {
         await this.submitApplication(application, jobData, profile, documents);
@@ -175,16 +233,18 @@ export class ApplicationOrchestrator {
         });
         spinner.succeed('Application submitted!');
       } catch (error) {
+        const msg = error instanceof Error ? error.message : 'Unknown error';
         applicationRepository.update(application.id!, {
           status: 'failed',
-          error_message: error instanceof Error ? error.message : 'Unknown error',
+          error_message: msg,
         });
-        spinner.fail('Application submission failed');
+        spinner.fail(`Submission failed on ${parsedUrl.platform}`);
         return {
           success: false,
           application,
-          error: `Submission failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          error: `[${parsedUrl.platform}] Submission failed for ${url}: ${msg}. Try with --dry-run to verify documents generate correctly.`,
           documents,
+          fitResult,
         };
       }
     } else {
@@ -192,7 +252,7 @@ export class ApplicationOrchestrator {
       logger.info('Set autoSubmit to true in config to enable automatic submission.');
     }
 
-    return { success: true, application, documents };
+    return { success: true, application, documents, fitResult };
   }
 
   private async submitApplication(
@@ -214,8 +274,8 @@ export class ApplicationOrchestrator {
     // Save documents (markdown and PDF)
     const resumeMdPath = join(docsDir, `${application.id}_resume.md`);
     const coverLetterMdPath = join(docsDir, `${application.id}_cover_letter.md`);
-    const resumePdfPath = join(docsDir, `${application.id}_resume.pdf`);
-    const coverLetterPdfPath = join(docsDir, `${application.id}_cover_letter.pdf`);
+    const resumePdfPath = join(docsDir, generateDocumentFilename(profile.name, 'resume'));
+    const coverLetterPdfPath = join(docsDir, generateDocumentFilename(profile.name, 'cover_letter'));
 
     // Save markdown versions
     await Bun.write(resumeMdPath, documents.resume);
@@ -301,7 +361,7 @@ export class ApplicationOrchestrator {
     if (type === 'resume' || type === 'both') {
       spinner.start('Generating tailored resume...');
       const resume = await tailorResume(provider, profile, jobData);
-      const resumePath = join(outputDir, `resume_${jobData.company.replace(/\s+/g, '_')}.pdf`);
+      const resumePath = join(outputDir, generateDocumentFilename(profile.name, 'resume'));
       await generateResumePdf(resume, resumePath, profile.name);
       result.resumePath = resumePath;
       spinner.succeed(`Resume saved to: ${resumePath}`);
@@ -310,7 +370,7 @@ export class ApplicationOrchestrator {
     if (type === 'cover-letter' || type === 'both') {
       spinner.start('Generating cover letter...');
       const coverLetter = await generateCoverLetter(provider, profile, jobData);
-      const coverPath = join(outputDir, `cover_letter_${jobData.company.replace(/\s+/g, '_')}.pdf`);
+      const coverPath = join(outputDir, generateDocumentFilename(profile.name, 'cover_letter'));
       await generateCoverLetterPdf(coverLetter, coverPath, profile.name);
       result.coverLetterPath = coverPath;
       spinner.succeed(`Cover letter saved to: ${coverPath}`);
