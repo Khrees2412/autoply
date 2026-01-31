@@ -227,6 +227,7 @@ describe('SUPPORTED_PLATFORMS regex patterns', () => {
         teamtailor: 'https://company.teamtailor.com/jobs/software-engineer',
         workday: 'https://workday.wd5.myworkdayjobs.com/Workday',
         ashby: 'https://jobs.ashbyhq.com/ashby',
+        bamboohr: 'https://company.bamboohr.com/careers/12345',
         generic: 'https://careers.somecompany.com/jobs/12345',
       };
 
