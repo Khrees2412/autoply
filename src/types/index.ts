@@ -11,10 +11,11 @@ export type Platform =
   | 'teamtailor'
   | 'workday'
   | 'ashby'
+  | 'bamboohr'
   | 'generic';
 
 export const SUPPORTED_PLATFORMS: Record<Platform, RegExp> = {
-  greenhouse: /boards\.greenhouse\.io/,
+  greenhouse: /boards\.greenhouse\.io|[?&]gh_jid=|greenhouse\.io\/embed/,
   linkedin: /linkedin\.com\/jobs/,
   lever: /jobs\.lever\.co/,
   jobvite: /jobs\.jobvite\.com/,
@@ -23,6 +24,7 @@ export const SUPPORTED_PLATFORMS: Record<Platform, RegExp> = {
   teamtailor: /\.teamtailor\.com/,
   workday: /\.myworkdayjobs\.com|workday\.com\/.*\/job/,
   ashby: /jobs\.ashbyhq\.com/,
+  bamboohr: /\.bamboohr\.com\/careers/,
   generic: /.*/
 };
 
@@ -165,7 +167,14 @@ export interface AppConfig {
     autoSubmit: boolean;
     saveScreenshots: boolean;
     retryAttempts: number;
+    /** Delay in seconds between applications in bulk mode (0 = no delay) */
+    rateLimitDelay: number;
+    minFitScore?: number;
+    /** When true, prompt user for fields that can't be auto-filled or AI-answered */
+    interactivePrompts: boolean;
   };
+  /** Cached answers for form fields the user has previously provided manually */
+  cachedAnswers?: Record<string, string>;
 }
 
 export const DEFAULT_CONFIG: AppConfig = {
@@ -183,6 +192,8 @@ export const DEFAULT_CONFIG: AppConfig = {
     autoSubmit: false,
     saveScreenshots: true,
     retryAttempts: 3,
+    rateLimitDelay: 0,
+    interactivePrompts: true,
   },
 };
 
