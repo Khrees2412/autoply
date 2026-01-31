@@ -7,14 +7,25 @@ import { applyCommand } from './commands/apply';
 import { generateCommand } from './commands/generate';
 import { historyCommand } from './commands/history';
 import { loginCommand } from './commands/login';
+import { statusCommand } from './commands/status';
+import { importCommand } from './commands/import';
 import { closeDb } from '../db';
+import { setVerbose } from '../utils/logger';
 
 const program = new Command();
 
 program
   .name('autoply')
   .description('Automated job application CLI - Apply to jobs with AI-generated resumes')
-  .version('1.0.0');
+  .version('1.0.0')
+  .option('-v, --verbose', 'Enable verbose output for debugging');
+
+program.hook('preAction', (thisCommand) => {
+  const opts = thisCommand.optsWithGlobals();
+  if (opts.verbose) {
+    setVerbose(true);
+  }
+});
 
 // Register commands
 program.addCommand(initCommand);
@@ -24,6 +35,8 @@ program.addCommand(applyCommand);
 program.addCommand(generateCommand);
 program.addCommand(historyCommand);
 program.addCommand(loginCommand);
+program.addCommand(statusCommand);
+program.addCommand(importCommand);
 
 // Cleanup on exit
 process.on('exit', () => {
