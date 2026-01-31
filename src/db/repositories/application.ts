@@ -73,10 +73,24 @@ export class ApplicationRepository {
     return row ? rowToApplication(row) : null;
   }
 
-  findByUrl(url: string): Application | null {
+  findByUrl(url: string): Application[] {
     const db = getDb();
-    const row = db.query<ApplicationRow, [string]>('SELECT * FROM applications WHERE url = ?').get(url);
-    return row ? rowToApplication(row) : null;
+    const rows = db
+      .query<ApplicationRow, [string]>(
+        'SELECT * FROM applications WHERE url = ? ORDER BY created_at DESC'
+      )
+      .all(url);
+    return rows.map(rowToApplication);
+  }
+
+  existsByUrl(url: string): boolean {
+    const db = getDb();
+    const row = db
+      .query<{ count: number }, [string]>(
+        'SELECT COUNT(*) as count FROM applications WHERE url = ?'
+      )
+      .get(url);
+    return (row?.count ?? 0) > 0;
   }
 
   findAll(filters?: { status?: ApplicationStatus; company?: string; profile_id?: number }): Application[] {
