@@ -2,13 +2,11 @@ import type { JobData } from '../types';
 import { generateCoverLetter } from '../ai/cover-letter';
 import { evaluateJobFit } from '../ai/job-matcher';
 import { tailorResume } from '../ai/resume';
-import { answerAllQuestions } from '../ai/cover-letter';
 import { profileRepository } from '../db/repositories/profile';
 import { applicationRepository } from '../db/repositories/application';
 import { configRepository } from '../db/repositories/config';
-import { savedAnswersRepository } from '../db/repositories/saved-answers';
 import { ApplicationQueue } from './queue';
-import { getDeterministicFieldValue } from './form-filler';
+import { FillPlanEngine } from './fill-plan-engine';
 import { generateResumePdf, generateCoverLetterPdf, generateDocumentFilename, markdownToPdf } from './document';
 import { logger, createSpinner, withCorrelationId, generateCorrelationId } from '../utils/logger';
 
@@ -157,7 +155,7 @@ export class ApplicationOrchestrator {
       platform,
       company: jobData.company,
       job_title: jobData.title,
-      status: 'pending',
+      status: 'review_required', // Default to review required for safety
       generated_resume: documents.resume,
       generated_cover_letter: documents.coverLetter,
       form_data: {
@@ -166,15 +164,15 @@ export class ApplicationOrchestrator {
       },
     });
 
-    // Step 8: Auto-submit or fill-only
-    if (config.application.autoSubmit) {
+    // Step 8: Handle Submission logic
+    if (config.application.autoSubmit && autoOpts.submitWithoutConfirmation) {
       return submitApplicationWithRetries(
         application, jobData, profile, documents, autoOpts,
         resumePath, coverLetterPath, platform, url, correlationId, spinner,
         fitResult.fitResult
       );
     } else {
-      logger.info('Auto-submit disabled. Filling application form...');
+      logger.info('Application is now in "Review Required" state. Fill form manually or approve in extension.');
       return fillApplicationForm(
         application, jobData, profile, documents, autoOpts,
         resumePath, coverLetterPath, platform, url, spinner
@@ -359,67 +357,12 @@ export class ApplicationOrchestrator {
       };
 
       // 6. Calculate Fill Plan (Field mappings)
-      const fillPlan: Record<string, string> = {};
-
-      if (detectedFields && detectedFields.length > 0) {
-        for (const field of detectedFields) {
-          const fieldKey = field.key || field.label;
-          const normalizedFieldKey = fieldKey.toLowerCase().replace(/[^a-z0-9]/g, '');
-
-          for (const [profileKey, profileValue] of Object.entries(profileData)) {
-            const normalizedProfileKey = profileKey.toLowerCase().replace(/[^a-z0-9]/g, '');
-            if (
-              normalizedFieldKey.includes(normalizedProfileKey) ||
-              normalizedProfileKey.includes(normalizedFieldKey) ||
-              normalizedFieldKey === normalizedProfileKey
-            ) {
-              if (profileValue) {
-                fillPlan[fieldKey] = profileValue;
-              }
-              break;
-            }
-          }
-
-          if (!fillPlan[fieldKey]) {
-            const value = getDeterministicFieldValue(profile, {
-              label: field.label,
-              name: field.key,
-              type: field.type as 'text' | 'select' | 'checkbox' | 'radio',
-            });
-            if (value) {
-              fillPlan[fieldKey] = value;
-            }
-          }
-        }
-      } else {
-        for (const field of jobData.form_fields || []) {
-          const value = getDeterministicFieldValue(profile, field);
-          if (value) fillPlan[field.name || field.label || ''] = value;
-        }
-      }
-
-      // AI questions
-      if (jobData.custom_questions && jobData.custom_questions.length > 0) {
-        const unanswered = jobData.custom_questions.filter((q) => !q.answer);
-        const needsAI: typeof unanswered = [];
-
-        for (const q of unanswered) {
-          const saved = savedAnswersRepository.findSimilar(profile.id || 0, q.question, 1);
-          if (saved.length > 0) {
-            fillPlan[q.question] = saved[0].answer;
-          } else {
-            needsAI.push(q);
-          }
-        }
-
-        if (needsAI.length > 0) {
-          const answers = await answerAllQuestions(provider, profile, jobData, needsAI, []);
-          for (const [q, a] of answers.entries()) {
-            fillPlan[q] = a;
-            savedAnswersRepository.upsert(profile.id || 0, q, a);
-          }
-        }
-      }
+      const fillPlan = await FillPlanEngine.createFillPlan(
+        profile,
+        detectedFields || [],
+        jobData,
+        provider
+      );
 
       return {
         success: true,

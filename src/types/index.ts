@@ -37,6 +37,8 @@ export const PreferencesSchema = z.object({
   preferred_locations: z.array(z.string()).default([]),
   excluded_companies: z.array(z.string()).default([]),
   job_types: z.array(z.string()).default(['full-time']),
+  target_roles: z.array(z.string()).default([]),
+  target_companies: z.array(z.string()).default([]),
 });
 
 export const ExperienceSchema = z.object({
@@ -83,7 +85,7 @@ export type Education = z.infer<typeof EducationSchema>;
 export type Profile = z.infer<typeof ProfileSchema>;
 
 // ============ Application Types ============
-export type ApplicationStatus = 'pending' | 'filled' | 'submitted' | 'failed';
+export type ApplicationStatus = 'pending' | 'filled' | 'submitted' | 'failed' | 'review_required';
 
 export interface Application {
   id?: number;

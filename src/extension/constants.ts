@@ -1,13 +1,10 @@
 /**
  * Shared constants for the Autoply extension.
- * Centralised to avoid duplication and the (globalThis as any).__API_BASE__ pattern.
+ * Centralised to avoid duplication.
  */
 
-/** Base URL for the Autoply API server */
-export const API_BASE: string =
-  typeof globalThis !== 'undefined' && typeof (globalThis as Record<string, unknown>).__API_BASE__ === 'string'
-    ? ((globalThis as Record<string, unknown>).__API_BASE__ as string)
-    : 'http://localhost:8088';
+/** Default API base URL for the extension */
+export const API_BASE = 'http://localhost:8088';
 
 /** URL protocols where the extension cannot inject content scripts */
 export const NON_SCRIPTABLE_PROTOCOLS = [

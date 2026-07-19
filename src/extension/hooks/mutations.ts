@@ -1,12 +1,13 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from './queries';
 import type { Profile, AppConfig } from '../../types';
-import { API_BASE } from '../constants';
+import { getApiBaseUrl } from '../utils/api-config';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function getApiUrl(path: string): string {
-  return `${API_BASE}${path}`;
+async function getApiUrl(path: string): Promise<string> {
+  const base = await getApiBaseUrl();
+  return `${base}${path}`;
 }
 
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
@@ -64,7 +65,7 @@ export function useSaveProfile() {
 
   return useMutation({
     mutationFn: async ({ formData, profileId }: SaveProfileData): Promise<Profile> => {
-      return fetchJson(getApiUrl('/profile'), {
+      return fetchJson(await getApiUrl('/profile'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...formData, id: profileId }),
@@ -82,7 +83,7 @@ export function useImportProfile() {
 
   return useMutation({
     mutationFn: async (resumeText: string): Promise<Partial<Profile>> => {
-      const data = await fetchJson<{ profile: Partial<Profile> }>(getApiUrl('/profile/import'), {
+      const data = await fetchJson<{ profile: Partial<Profile> }>(await getApiUrl('/profile/import'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ resumeText }),
@@ -101,7 +102,7 @@ export function useDeleteApplication() {
 
   return useMutation({
     mutationFn: async (id: number): Promise<void> => {
-      const res = await fetch(getApiUrl(`/applications/${id}`), {
+      const res = await fetch(await getApiUrl(`/applications/${id}`), {
         method: 'DELETE',
       });
       if (!res.ok) throw new Error('Failed to delete application');
@@ -133,7 +134,7 @@ export function useUpdateConfig() {
         updated.browser = { ...currentConfig.browser, ...newConfig.browser };
       }
 
-      const res = await fetch(getApiUrl('/config'), {
+      const res = await fetch(await getApiUrl('/config'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updated),
@@ -160,7 +161,7 @@ export function useGenerateDocuments() {
         resumeContent?: string;
         coverLetterContent?: string;
         error?: string;
-      }>(getApiUrl('/documents/generate'), {
+      }>(await getApiUrl('/documents/generate'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url, type }),
@@ -184,7 +185,7 @@ export function useBulkAdd() {
 
   return useMutation({
     mutationFn: async ({ urls }: BulkAddData): Promise<BulkAddResult> => {
-      const data = await fetchJson<{ added: number }>(getApiUrl('/queue/add'), {
+      const data = await fetchJson<{ added: number }>(await getApiUrl('/queue/add'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ urls }),
@@ -207,7 +208,7 @@ export function useBulkProcess() {
       delaySeconds,
     }: BulkProcessData): Promise<{ stats: { pending: number; completed: number; failed: number } }> => {
       const data = await fetchJson<{ stats: { pending: number; completed: number; failed: number } }>(
-        getApiUrl('/queue/process'),
+        await getApiUrl('/queue/process'),
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -227,7 +228,7 @@ export function useBulkProcess() {
 export function useMapFields() {
   return useMutation({
     mutationFn: async ({ fields }: MapFieldsData): Promise<{ fillPlan: Record<string, string> }> => {
-      return fetchJson(getApiUrl('/profile/map-fields'), {
+      return fetchJson(await getApiUrl('/profile/map-fields'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fields }),
@@ -240,9 +241,25 @@ export function useMapFields() {
 export function useDownloadDocument() {
   return useMutation({
     mutationFn: async (filename: string): Promise<Blob> => {
-      const res = await fetch(getApiUrl(`/documents/download/${encodeURIComponent(filename)}`));
+      const res = await fetch(await getApiUrl(`/documents/download/${encodeURIComponent(filename)}`));
       if (!res.ok) throw new Error('Failed to download document');
       return res.blob();
+    },
+  });
+}
+
+/** Send a chat message and get AI response */
+export function useSendChatMessage() {
+  return useMutation({
+    mutationFn: async (
+      messages: Array<{ role: 'user' | 'assistant'; content: string }>
+    ): Promise<string> => {
+      const data = await fetchJson<{ reply: string }>(await getApiUrl('/chat'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages }),
+      });
+      return data.reply;
     },
   });
 }

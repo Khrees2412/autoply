@@ -322,6 +322,8 @@ describe('FormFiller Value Extraction Logic', () => {
       remote_only: false,
       preferred_locations: [],
       excluded_companies: [],
+      target_roles: [],
+      target_companies: [],
       job_types: ['full-time'],
     },
   };

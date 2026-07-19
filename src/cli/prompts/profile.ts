@@ -277,6 +277,8 @@ export async function promptForPreferences(): Promise<Preferences> {
     min_salary,
     preferred_locations,
     excluded_companies,
+    target_roles: [],
+    target_companies: [],
     job_types,
   };
 }

@@ -50,16 +50,6 @@ async function resolveApiKey(provider: AIProviderType): Promise<string | null> {
     return keychainKey;
   }
 
-  // Priority 3: Config file (deprecated - warn user)
-  const config = configRepository.loadAppConfig();
-  if (config.ai.apiKey && config.ai.provider === cloudProvider) {
-    console.warn(
-      `[Deprecation Warning] Storing API keys in config.json is deprecated. ` +
-        `Use environment variable ${envKey} or the secure keychain instead.`
-    );
-    return config.ai.apiKey;
-  }
-
   return null;
 }
 

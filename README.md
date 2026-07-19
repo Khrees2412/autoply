@@ -152,7 +152,7 @@ Autoply includes a browser extension that provides autofill assistance directly 
 
 3. Enable **Developer mode** (toggle in top right)
 
-4. Click **Load unpacked** and select `dist/extension/chrome`
+4. Click **Load unpacked** and select `dist/extension`
 
 5. Pin the extension for easy access (click the puzzle piece icon → pin)
 
@@ -167,7 +167,7 @@ Autoply includes a browser extension that provides autofill assistance directly 
 
 3. Click **Load Temporary Add-on...**
 
-4. Select `dist/extension/firefox/manifest.json`
+4. Select `dist/extension-firefox/manifest.json`
 
 Note: Firefox temporary add-ons are removed when you close Firefox. For permanent installation, you need to sign the extension at [Firefox Add-ons](https://addons.mozilla.org/).
 
@@ -183,16 +183,17 @@ Note: Firefox temporary add-ons are removed when you close Firefox. For permanen
 
 3. Click the Autoply extension icon
 
-4. The extension will:
-   - Detect form fields on the page
-   - Pull your profile data from the API
-   - Fill in available fields automatically
+4. The extension sidepanel features:
+   - **Autofill**: Detects form fields on the page, maps your profile data, and fills fields automatically.
+   - **AI Chat Assistant**: Ask career questions, get interview prep, or draft responses using context from your profile, resume, GitHub, LinkedIn, and portfolio links.
+   - **Document Generation**: Tailor resumes and cover letters for the current job page.
+   - **Application Stats**: Track submitted, pending, and filled application history and metrics.
 
 ### Configuration
 
 The extension communicates with the Autoply API server. By default, it connects to `http://localhost:8088`.
 
-To change the server URL, edit `src/extension/sidepanel.tsx` and modify the `API_BASE` constant, then rebuild the extension.
+You can set a custom API base URL during build via `VITE_API_BASE_URL` environment variable or dynamically in extension storage.
 
 ---
 
@@ -207,15 +208,15 @@ Autoply uses an AI provider to generate resumes and cover letters. Set one up be
 ```bash
 # Anthropic
 autoply config set ai.provider anthropic
-autoply config set ai.model claude-sonnet-4-5-20250929
+autoply config set ai.model claude-sonnet-4-6
 
 # OpenAI
 autoply config set ai.provider openai
-autoply config set ai.model gpt-5.2
+autoply config set ai.model gpt-5.4-mini
 
 # Google
 autoply config set ai.provider google
-autoply config set ai.model gemini-pro-3
+autoply config set ai.model gemini-3.1-flash-lite-preview
 ```
 
 Set your API key as an environment variable — add to your `.env` or shell profile:

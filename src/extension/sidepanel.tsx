@@ -1,14 +1,14 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
 import './index.css';
-import { LayoutDashboard, History, Target, User, Settings as SettingsIcon } from 'lucide-react';
+import { LayoutDashboard, MessageSquare, BarChart3, User, Settings as SettingsIcon, History } from 'lucide-react';
 import type { Profile } from '../types';
 
 // Zustand
 import { useAppStore } from './store';
 
 // React Query
-import { useIsMutating } from '@tanstack/react-query';
+
 import {
   useExtensionData,
   useCurrentTabUrl,
@@ -21,6 +21,7 @@ import {
   useBulkProcess,
   useMapFields,
   useDownloadDocument,
+  useSendChatMessage,
 } from './hooks';
 import { Providers } from './providers';
 
@@ -37,10 +38,13 @@ import { PreviewModal } from './components/PreviewModal';
 import { SettingsSection } from './components/SettingsSection';
 import { AnalyticsSection } from './components/AnalyticsSection';
 import { BulkSection } from './components/BulkSection';
+
 import { FillReportCard } from './components/FillReportCard';
 import { GenerateDocumentsCard } from './components/GenerateDocumentsCard';
 import { ImportPreviewModal } from './components/ImportPreviewModal';
 import { VirtualList } from './components/VirtualList';
+import { HomeInsightsSection } from './components/HomeInsightsSection';
+import { ChatSection } from './components/ChatSection';
 
 // Constants
 import { NON_SCRIPTABLE_PROTOCOLS, UNSUPPORTED_HOSTNAMES } from './constants';
@@ -192,6 +196,13 @@ const AppContent = () => {
     updateFillReportField,
     importPreviewData,
     setImportPreviewData,
+    isApplying,
+    setIsApplying,
+    chatMessages,
+    addChatMessage,
+    clearChatMessages,
+    isChatLoading,
+    setIsChatLoading,
   } = useAppStore();
 
   // React Query data fetching
@@ -217,12 +228,48 @@ const AppContent = () => {
   const bulkProcessMutation = useBulkProcess();
   const mapFieldsMutation = useMapFields();
   const downloadDocumentMutation = useDownloadDocument();
+  const chatMutation = useSendChatMessage();
 
   // Loading states
-  const isAnyMutating = useIsMutating();
   const isSavingProfile = saveProfileMutation.isPending || importProfileMutation.isPending;
   const isGeneratingDocs = generateDocsMutation.isPending;
   const isBulkProcessing = bulkProcessMutation.isPending;
+
+  // ── Chat handler ────────────────────────────────────────────────────
+
+  const handleSendChat = useCallback(async (content: string) => {
+    const userMsg = {
+      id: `user-${Date.now()}`,
+      role: 'user' as const,
+      content,
+      timestamp: Date.now(),
+    };
+    addChatMessage(userMsg);
+    setIsChatLoading(true);
+
+    try {
+      const allMessages = [
+        ...chatMessages.map((m) => ({ role: m.role, content: m.content })),
+        { role: 'user' as const, content },
+      ];
+      const reply = await chatMutation.mutateAsync(allMessages);
+      addChatMessage({
+        id: `assistant-${Date.now()}`,
+        role: 'assistant',
+        content: reply,
+        timestamp: Date.now(),
+      });
+    } catch (err) {
+      addChatMessage({
+        id: `error-${Date.now()}`,
+        role: 'assistant',
+        content: `Sorry, I encountered an error: ${err instanceof Error ? err.message : 'Unknown error'}. Please try again.`,
+        timestamp: Date.now(),
+      });
+    } finally {
+      setIsChatLoading(false);
+    }
+  }, [chatMessages, addChatMessage, setIsChatLoading, chatMutation]);
 
   // ── Event handlers ──────────────────────────────────────────────────
 
@@ -380,13 +427,18 @@ const AppContent = () => {
   };
 
   const handleAutofill = async () => {
+    if (isApplying) return;
+    setIsApplying(true);
+
     if (!connected) {
       toast.error('API server not connected');
+      setIsApplying(false);
       return;
     }
 
     if (!profile) {
       toast.error('No profile found. Please set up your profile first.');
+      setIsApplying(false);
       return;
     }
 
@@ -468,6 +520,7 @@ const AppContent = () => {
 
       // Send to main frame first
       const fillResult = await sendMessageToTab(tab.id, profilePayload, tab.url);
+      let filledArr: string[] = fillResult?.filled || [];
 
       // For Ashby and other iframe-based platforms, also try all frames
       try {
@@ -475,9 +528,12 @@ const AppContent = () => {
         for (const frame of frames || []) {
           if (frame.frameId !== 0) {
             try {
-              await chrome.tabs.sendMessage(tab.id, profilePayload, {
+              const frameRes = await chrome.tabs.sendMessage(tab.id, profilePayload, {
                 frameId: frame.frameId,
               });
+              if (frameRes?.filled?.length) {
+                filledArr = Array.from(new Set([...filledArr, ...frameRes.filled]));
+              }
             } catch {
               // Not all frames accept messages
             }
@@ -487,9 +543,8 @@ const AppContent = () => {
         // webNavigation may not be available
       }
 
-      if (fillResult?.success) {
+      if (filledArr.length > 0 || fillResult?.success) {
         const profileKeyToValue = buildProfileKeyToValue(profile);
-        const filledArr: string[] = fillResult?.filled || [];
         setFillReport({
           filled: filledArr.map((key) => ({ key, value: profileKeyToValue[key] ?? '' })),
           skipped: filledArr.length === 0 ? 0 : Math.max(0, 8 - filledArr.length),
@@ -503,6 +558,8 @@ const AppContent = () => {
     } catch (err) {
       console.error('Autofill failed', err);
       toast.error((err instanceof Error ? err.message : String(err)) || 'Autofill failed');
+    } finally {
+      setIsApplying(false);
     }
   };
 
@@ -538,7 +595,7 @@ const AppContent = () => {
 
   const filteredApps =
     recentFilter === 'all'
-      ? applications.slice(0, 10)
+      ? applications
       : applications.filter((app) => app.status === recentFilter);
 
   // ── Render ──────────────────────────────────────────────────────────
@@ -554,7 +611,7 @@ const AppContent = () => {
           <div className="space-y-4">
             <ActionCard
               onApply={handleAutofill}
-              isApplying={isAnyMutating > 0}
+              isApplying={isApplying}
               connected={connected}
               error={isError ? 'Failed to load extension data' : null}
               onRetry={() => window.location.reload()}
@@ -621,88 +678,73 @@ const AppContent = () => {
 
             <QuickStats timeSaved={timeSaved} applicationsCount={applications.length} />
 
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-(--text-primary)">Recent Activity</h3>
-              </div>
+            <HomeInsightsSection
+              currentTabUrl={currentTabUrl}
+              applications={applications}
+              profile={profile}
+              onNavigateTab={setActiveTab}
+            />
+          </div>
+        )}
+
+        {activeTab === 'chat' && (
+          <ChatSection
+            messages={chatMessages}
+            onSend={handleSendChat}
+            onClear={clearChatMessages}
+            isLoading={isChatLoading}
+            connected={connected}
+            hasProfile={!!profile}
+          />
+        )}
+
+        {activeTab === 'analytics' && (
+          <div className="space-y-4">
+            <AnalyticsSection applications={applications} />
+
+            {/* Application History */}
+            <div className="pt-2">
+              <h3 className="text-sm font-semibold text-(--text-primary) mb-3">Application History</h3>
               <FilterTabs active={recentFilter} onChange={setRecentFilter} />
 
-              <div className="space-y-2">
+              <div className="mt-3">
                 {filteredApps.length > 0 ? (
-                  filteredApps.map((app, i) => (
-                    <div
-                      key={app.id}
-                      className="animate-fade-in"
-                      style={{ animationDelay: `${i * 50}ms` }}
-                    >
-                      <ApplicationCard
-                        application={app}
-                        onDelete={() => app.id && deleteApplication(app.id)}
-                        onPreview={() => setPreviewApp(app)}
-                      />
-                    </div>
-                  ))
+                  <VirtualList
+                    items={filteredApps}
+                    itemHeight={80}
+                    maxHeight={400}
+                    className="space-y-2"
+                    renderItem={(app, i) => (
+                      <div
+                        key={app.id ?? `${app.url}-${app.created_at}`}
+                        className="animate-fade-in"
+                        style={{ animationDelay: `${Math.min(i, 10) * 30}ms` }}
+                      >
+                        <ApplicationCard
+                          application={app}
+                          onDelete={() => app.id && deleteApplication(app.id)}
+                          onPreview={() => setPreviewApp(app)}
+                        />
+                      </div>
+                    )}
+                  />
                 ) : (
                   <div className="card">
                     <div className="empty-state">
                       <div className="empty-state-icon">
                         <History className="w-6 h-6" />
                       </div>
-                      <h3 className="empty-state-title">No applications yet</h3>
+                      <h3 className="empty-state-title">No applications found</h3>
                       <p className="empty-state-description">
-                        Your application history will appear here
+                        {recentFilter === 'all'
+                          ? 'Use autofill on a job page to start tracking'
+                          : `No applications found with status "${recentFilter}"`}
                       </p>
                     </div>
                   </div>
                 )}
               </div>
             </div>
-          </div>
-        )}
-
-        {activeTab === 'history' && (
-          <div className="space-y-4">
-            <h3 className="text-sm font-semibold text-(--text-primary)">Application History</h3>
-            {applications.length > 0 ? (
-              <VirtualList
-                items={applications}
-                itemHeight={80}
-                maxHeight={600}
-                className="space-y-2"
-                renderItem={(app, i) => (
-                  <div
-                    key={app.id ?? `${app.url}-${app.created_at}`}
-                    className="animate-fade-in"
-                    style={{ animationDelay: `${Math.min(i, 10) * 30}ms` }}
-                  >
-                    <ApplicationCard
-                      application={app}
-                      onDelete={() => app.id && deleteApplication(app.id)}
-                      onPreview={() => setPreviewApp(app)}
-                    />
-                  </div>
-                )}
-              />
-            ) : (
-              <div className="card">
-                <div className="empty-state">
-                  <div className="empty-state-icon">
-                    <History className="w-6 h-6" />
-                  </div>
-                  <h3 className="empty-state-title">No applications tracked</h3>
-                  <p className="empty-state-description">
-                    Use autofill on a job page to start tracking
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {activeTab === 'analytics' && (
-          <div className="space-y-4">
-            <h3 className="text-sm font-semibold text-(--text-primary)">Analytics</h3>
-            <AnalyticsSection applications={applications} />
           </div>
         )}
 
@@ -721,6 +763,8 @@ const AppContent = () => {
           </div>
         )}
 
+
+
         {activeTab === 'settings' && <SettingsSection config={config} onUpdate={updateAppConfig} />}
       </main>
 
@@ -736,23 +780,24 @@ const AppContent = () => {
             <span>Home</span>
           </button>
           <button
-            onClick={() => setActiveTab('history')}
-            className={`nav-item ${activeTab === 'history' ? 'active' : ''}`}
-            aria-label="History"
-            aria-current={activeTab === 'history' ? 'page' : undefined}
+            onClick={() => setActiveTab('chat')}
+            className={`nav-item ${activeTab === 'chat' ? 'active' : ''}`}
+            aria-label="Chat"
+            aria-current={activeTab === 'chat' ? 'page' : undefined}
           >
-            <History className="w-5 h-5" />
-            <span>History</span>
+            <MessageSquare className="w-5 h-5" />
+            <span>Chat</span>
           </button>
           <button
             onClick={() => setActiveTab('analytics')}
             className={`nav-item ${activeTab === 'analytics' ? 'active' : ''}`}
-            aria-label="Analytics"
+            aria-label="Stats"
             aria-current={activeTab === 'analytics' ? 'page' : undefined}
           >
-            <Target className="w-5 h-5" />
+            <BarChart3 className="w-5 h-5" />
             <span>Stats</span>
           </button>
+
           <button
             onClick={() => setActiveTab('profile')}
             className={`nav-item ${activeTab === 'profile' ? 'active' : ''}`}

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, ShieldCheck, CheckCircle, AlertCircle, Loader2, RefreshCw } from 'lucide-react';
+import { Sparkles, ShieldCheck, CheckCircle, AlertCircle, Loader2, RefreshCw, Server } from 'lucide-react';
 import type { AppConfig, AIProviderType } from '../../types';
-import { API_BASE } from '../constants';
+import { getApiBaseUrl, setApiBaseUrl } from '../utils/api-config';
 import { useAIModels } from '../hooks';
 
 export const SettingsSection = ({
@@ -13,6 +13,11 @@ export const SettingsSection = ({
 }) => {
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [testMessage, setTestMessage] = useState('');
+  const [apiBaseUrl, setApiBaseUrlState] = useState('');
+
+  useEffect(() => {
+    getApiBaseUrl().then(setApiBaseUrlState);
+  }, []);
 
   // Fetch available models for local providers
   const {
@@ -45,7 +50,7 @@ export const SettingsSection = ({
     setTestStatus('testing');
     setTestMessage('');
     try {
-      const res = await fetch(`${API_BASE}/config/test`, {
+      const res = await fetch(`${apiBaseUrl}/config/test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ai: config.ai }),
@@ -65,11 +70,40 @@ export const SettingsSection = ({
     setTimeout(() => setTestStatus('idle'), 3000);
   };
 
+  const handleUpdateApiBaseUrl = async (url: string) => {
+    setApiBaseUrlState(url);
+    await setApiBaseUrl(url);
+  };
+
   return (
     <div className="space-y-6">
       <div className="card space-y-4">
         <div className="flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-blue-500" />
+          <Server className="w-4 h-4 text-indigo-500" />
+          <h3 className="text-sm font-semibold text-(--text-primary)">API Connection</h3>
+        </div>
+
+        <div className="space-y-3">
+          <label className="label">Server URL</label>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={apiBaseUrl}
+              onChange={(e) => handleUpdateApiBaseUrl(e.target.value)}
+              placeholder="http://localhost:8088"
+              className="input font-mono"
+              aria-label="API server URL"
+            />
+          </div>
+          <p className="text-xs text-(--text-tertiary)">
+            The browser extension communicates with this server to access your profile and AI configurations.
+          </p>
+        </div>
+      </div>
+
+      <div className="card space-y-4">
+        <div className="flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-indigo-500" />
           <h3 className="text-sm font-semibold text-(--text-primary)">AI Configuration</h3>
         </div>
 

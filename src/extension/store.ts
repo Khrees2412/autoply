@@ -9,11 +9,18 @@ export interface DocPreviewState {
   type: 'resume' | 'cover-letter';
 }
 
-type ActiveTab = 'dashboard' | 'history' | 'analytics' | 'profile' | 'settings';
+type ActiveTab = 'dashboard' | 'chat' | 'history' | 'analytics' | 'profile' | 'settings' | 'discovery';
 
 export interface FillReport {
   filled: Array<{ key: string; value: string }>;
   skipped: number;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: number;
 }
 
 interface AppUIState {
@@ -28,6 +35,8 @@ interface AppUIState {
   bulkUrls: string;
   isApplying: boolean;
   autofillError: string | null;
+  chatMessages: ChatMessage[];
+  isChatLoading: boolean;
 
   setActiveTab: (tab: ActiveTab) => void;
   setRecentFilter: (filter: string) => void;
@@ -41,6 +50,9 @@ interface AppUIState {
   setBulkUrls: (urls: string) => void;
   setIsApplying: (applying: boolean) => void;
   setAutofillError: (error: string | null) => void;
+  addChatMessage: (message: ChatMessage) => void;
+  clearChatMessages: () => void;
+  setIsChatLoading: (loading: boolean) => void;
 }
 
 export const useAppStore = create<AppUIState>((set) => ({
@@ -55,6 +67,8 @@ export const useAppStore = create<AppUIState>((set) => ({
   bulkUrls: '',
   isApplying: false,
   autofillError: null,
+  chatMessages: [],
+  isChatLoading: false,
 
   setActiveTab: (activeTab) => set({ activeTab }),
   setRecentFilter: (recentFilter) => set({ recentFilter }),
@@ -78,4 +92,8 @@ export const useAppStore = create<AppUIState>((set) => ({
   setBulkUrls: (bulkUrls) => set({ bulkUrls }),
   setIsApplying: (isApplying) => set({ isApplying }),
   setAutofillError: (autofillError) => set({ autofillError }),
+  addChatMessage: (message) =>
+    set((state) => ({ chatMessages: [...state.chatMessages, message] })),
+  clearChatMessages: () => set({ chatMessages: [], isChatLoading: false }),
+  setIsChatLoading: (isChatLoading) => set({ isChatLoading }),
 }));

@@ -50,6 +50,17 @@ const NAME_TO_PROFILE_KEY: Record<string, string> = {
   name: 'fullName',
   fullname: 'fullName',
   full_name: 'fullName',
+  // Ashby system field keys
+  systemfieldname: 'fullName',
+  systemfieldemail: 'email',
+  systemfieldphone: 'phone',
+  systemfieldlocation: 'location',
+  systemfieldlinkedin: 'linkedin',
+  systemfieldgithub: 'github',
+  systemfieldportfolio: 'portfolio',
+  systemfieldwebsite: 'portfolio',
+  systemfieldurls: 'portfolio',
+  systemfieldresume: 'resumeUrl',
 };
 
 interface Profile {
@@ -95,10 +106,15 @@ function shouldSkipField(label: string): boolean {
 
 function isFormElement(el: Element): boolean {
   const tagName = el.tagName;
-  if (!['INPUT', 'TEXTAREA', 'SELECT'].includes(tagName)) return false;
+  if (!['INPUT', 'TEXTAREA', 'SELECT'].includes(tagName)) {
+    const role = el.getAttribute('role');
+    const popup = el.getAttribute('aria-haspopup');
+    if (role === 'combobox' || popup === 'listbox') return true;
+    return false;
+  }
 
   const input = el as HTMLInputElement;
-  if (['hidden', 'submit', 'button', 'reset', 'image'].includes(input.type)) return false;
+  if (['hidden', 'submit', 'button', 'reset', 'image'].includes(input.type) && input.getAttribute('role') !== 'combobox') return false;
 
   return true;
 }
@@ -136,6 +152,20 @@ function getFieldLabel(el: Element): string {
   // Try parent label
   const parentLabel = input.closest('label');
   if (parentLabel?.textContent) return parentLabel.textContent.trim();
+
+  // Try field container label (Ashby, Greenhouse, Lever, Workday)
+  const container = input.closest(
+    '.ashby-application-form-field, [data-testid*="field"], [data-testid*="question"], [class*="form-field"], [class*="FormField"], fieldset, [role="group"]'
+  );
+  if (container) {
+    const labelEl = container.querySelector(
+      'label, [class*="label"], [data-testid*="label"], legend, span[class*="Label"]'
+    );
+    if (labelEl?.textContent) {
+      const text = labelEl.textContent.trim();
+      if (text) return text;
+    }
+  }
 
   // Try name attribute
   const name = input.name;
@@ -200,8 +230,27 @@ async function fillTextInput(el: Element, value: string): Promise<boolean> {
 }
 
 function isCustomDropdown(el: HTMLElement): boolean {
+  if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+    const input = el as HTMLInputElement;
+    const type = input.type?.toLowerCase();
+    const isStandardTextInput =
+      ['text', 'email', 'tel', 'url', 'password', 'number', 'search'].includes(type) ||
+      input.tagName === 'TEXTAREA';
+
+    const role = input.getAttribute('role')?.toLowerCase();
+    const hasPopup = input.getAttribute('aria-haspopup');
+    const isReadOnly = input.readOnly;
+
+    if (isStandardTextInput && !isReadOnly && role !== 'combobox' && !hasPopup) {
+      return false;
+    }
+  }
+
+  const role = el.getAttribute('role');
+  if (role === 'combobox' || role === 'listbox') return true;
+
   const parent = el.closest(
-    '[class*="select"], [class*="Select"], [role="combobox"], [data-testid*="select"]'
+    '[role="combobox"], [aria-haspopup="listbox"], [data-testid*="select"], [class*="react-select"], [class*="custom-select"], [class*="Select-control"]'
   );
   return parent !== null;
 }
@@ -238,13 +287,13 @@ async function fillCustomDropdown(el: HTMLElement, value: string): Promise<boole
 
     // Wait for options to appear rather than sleeping a fixed time
     const optionEl = await waitForElement(
-      '[role="option"], [role="listbox"] li, [class*="option"], [class*="menu"] li, ul[role="listbox"] li'
+      '[role="option"], [role="listbox"] li, [class*="option"], [class*="menu"] li, ul[role="listbox"] li, [data-testid*="option"]'
     );
 
     if (optionEl) {
       const allOptions = Array.from(
         document.querySelectorAll(
-          '[role="option"], [role="listbox"] li, [class*="option"], [class*="menu"] li, ul[role="listbox"] li'
+          '[role="option"], [role="listbox"] li, [class*="option"], [class*="menu"] li, ul[role="listbox"] li, [data-testid*="option"]'
         )
       );
       const lv = value.toLowerCase();
@@ -266,7 +315,7 @@ async function fillCustomDropdown(el: HTMLElement, value: string): Promise<boole
       combobox.value = value;
       combobox.dispatchEvent(new InputEvent('input', { bubbles: true }));
 
-      const firstOption = await waitForElement('[role="option"]');
+      const firstOption = await waitForElement('[role="option"], [data-testid*="option"]');
       if (firstOption) {
         (firstOption as HTMLElement).click();
         return true;
@@ -431,8 +480,9 @@ async function uploadResumeFile(base64: string, filename: string): Promise<boole
   ) as HTMLInputElement[];
 
   for (const input of fileInputs) {
-    if (!isVisible(input)) continue;
-
+    const container = input.closest(
+      '.ashby-application-form-field, [data-testid*="field"], [data-testid*="resume"], [class*="resume"], label, fieldset, div'
+    );
     const context = (
       input.name +
       ' ' +
@@ -440,7 +490,7 @@ async function uploadResumeFile(base64: string, filename: string): Promise<boole
       ' ' +
       (input.getAttribute('aria-label') || '') +
       ' ' +
-      (input.closest('label')?.textContent || '') +
+      (container?.textContent || '') +
       ' ' +
       (input.getAttribute('accept') || '')
     ).toLowerCase();
@@ -449,7 +499,8 @@ async function uploadResumeFile(base64: string, filename: string): Promise<boole
       context.includes('resume') ||
       context.includes('cv') ||
       context.includes('curriculum') ||
-      context.includes('.pdf')
+      context.includes('.pdf') ||
+      context.includes('systemfield_resume')
     ) {
       try {
         const mimeType = 'application/pdf';
@@ -511,16 +562,16 @@ function classifyElement(el: Element, label: string): string | null {
   // 4. Label / placeholder / aria-label text
   if (label) {
     const l = label.toLowerCase();
-    if (/first|given|\bfname\b/.test(l) && !/last/.test(l)) return 'firstName';
-    if (/last|surname|family|\blname\b/.test(l)) return 'lastName';
-    if (/full[\s-]?name|your[\s-]?name/.test(l)) return 'fullName';
-    if (/\bemail\b|e-?mail/.test(l)) return 'email';
-    if (/\bphone\b|\btel\b|mobile|cell/.test(l)) return 'phone';
-    if (/linkedin/.test(l)) return 'linkedin';
-    if (/\bgithub\b/.test(l)) return 'github';
-    if (/portfolio|personal[\s-]?site|personal[\s-]?url/.test(l)) return 'portfolio';
-    if (/\bcity\b|location/.test(l)) return 'location';
-    if (/\bwebsite\b/.test(l)) return 'portfolio';
+    if (/first|given|\bfname\b/i.test(l) && !/last/i.test(l)) return 'firstName';
+    if (/last|surname|family|\blname\b/i.test(l)) return 'lastName';
+    if (/full[\s-]?name|your[\s-]?name|\bname\b/i.test(l)) return 'fullName';
+    if (/\bemail\b|e-?mail/i.test(l)) return 'email';
+    if (/\bphone\b|\btel\b|mobile|cell/i.test(l)) return 'phone';
+    if (/linkedin/i.test(l)) return 'linkedin';
+    if (/\bgithub\b/i.test(l)) return 'github';
+    if (/portfolio|personal[\s-]?site|personal[\s-]?url/i.test(l)) return 'portfolio';
+    if (/\bcity\b|location|address/i.test(l)) return 'location';
+    if (/\bwebsite\b/i.test(l)) return 'portfolio';
   }
 
   return null;
@@ -530,10 +581,10 @@ async function fillAllFields(profile: Profile): Promise<{ filled: string[]; erro
   const filled: string[] = [];
   const filledKeys = new Set<string>();
 
-  // Single DOM query — eliminates the previous 3–4 separate querySelectorAll passes.
+  // Single DOM query — covers standard form fields and custom combobox controls (e.g. Ashby)
   const allInputs = Array.from(
     document.querySelectorAll<Element>(
-      'input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="image"]), select, textarea'
+      'input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="image"]), select, textarea, [role="combobox"], [aria-haspopup="listbox"]'
     )
   );
 

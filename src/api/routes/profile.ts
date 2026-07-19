@@ -71,6 +71,61 @@ export function registerProfileRoutes(app: FastifyInstance): void {
     }
   });
 
+  // Sync / import profile from LinkedIn URL
+  app.post('/profile/sync-linkedin', async (request, reply) => {
+    const { linkedinUrl } = (request.body || {}) as { linkedinUrl?: string };
+    const existingProfile = profileRepository.findFirst();
+
+    const targetUrl = linkedinUrl || existingProfile?.linkedin_url;
+    if (!targetUrl) {
+      return reply.status(400).send({ error: 'LinkedIn URL is required' });
+    }
+
+    try {
+      const { scrapeLinkedInProfile } = await import('../../scrapers/linkedin-profile');
+      const linkedinData = await scrapeLinkedInProfile(targetUrl);
+
+      const expUpdates = linkedinData.experience.map((e) => ({
+        title: e.title,
+        company: e.company,
+        location: e.location,
+        start_date: e.startDate || '',
+        end_date: e.endDate,
+        description: e.description,
+        highlights: [],
+      }));
+
+      const eduUpdates = linkedinData.education.map((e) => ({
+        institution: e.institution,
+        degree: e.degree || 'Degree',
+        field: e.field,
+        start_date: e.startDate,
+        end_date: e.endDate,
+      }));
+
+      const mergedSkills = Array.from(
+        new Set([...(existingProfile?.skills || []), ...linkedinData.skills])
+      );
+
+      const updates: Partial<Profile> = {
+        linkedin_url: targetUrl,
+        location: linkedinData.location || existingProfile?.location,
+        skills: mergedSkills,
+        experience: expUpdates.length > 0 ? expUpdates : existingProfile?.experience || [],
+        education: eduUpdates.length > 0 ? eduUpdates : existingProfile?.education || [],
+      };
+
+      if (existingProfile && existingProfile.id !== undefined) {
+        const updated = profileRepository.update(existingProfile.id, updates);
+        return { success: true, profile: updated, linkedinData };
+      }
+
+      return reply.status(400).send({ error: 'Save a base profile first before syncing LinkedIn' });
+    } catch (error) {
+      return reply.status(500).send({ error: (error as Error).message });
+    }
+  });
+
   // Delete profile
   app.delete('/profile/:id', async (request, reply) => {
     const { id } = request.params as { id: string };

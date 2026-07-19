@@ -121,8 +121,109 @@ profileCommand
 
 profileCommand
   .command('import <file>')
-  .description('Import profile from a resume file (PDF/text)')
-  .action(async (_file: string) => {
-    logger.warning('Resume import feature is not yet implemented.');
-    logger.info('Please use "autoply init" to create your profile manually.');
+  .description('Import profile from a resume file (PDF/text/markdown)')
+  .action(async (file: string) => {
+    const { extractTextFromFile } = await import('../../utils/document-extractor');
+    const { extractProfileFromResume } = await import('../../ai/profile-extractor');
+    const { createAIProvider } = await import('../../ai/provider');
+    const ora = (await import('ora')).default;
+
+    const extractSpinner = ora(`Reading document "${file}"...`).start();
+    const result = await extractTextFromFile(file);
+
+    if (!result.success || !result.content) {
+      extractSpinner.fail(result.error || 'Failed to read file');
+      process.exit(1);
+    }
+    extractSpinner.succeed('Document text extracted successfully.');
+
+    const aiSpinner = ora('Parsing profile with AI...').start();
+    try {
+      const provider = createAIProvider();
+      const extracted = await extractProfileFromResume(provider, result.content);
+      aiSpinner.succeed('Profile parsed successfully!');
+
+      const existingProfile = profileRepository.findFirst();
+      if (existingProfile && existingProfile.id !== undefined) {
+        profileRepository.update(existingProfile.id, {
+          ...extracted,
+          base_resume: result.content,
+        });
+        logger.success('Profile updated with extracted resume data.');
+      } else {
+        profileRepository.create({
+          ...extracted,
+          base_resume: result.content,
+        });
+        logger.success('New profile created from resume.');
+      }
+    } catch (error) {
+      aiSpinner.fail();
+      logger.error(`Failed to parse resume: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      process.exit(1);
+    }
+  });
+
+profileCommand
+  .command('sync-linkedin [url]')
+  .description('Sync experience, education, and skills from a LinkedIn profile URL')
+  .action(async (url?: string) => {
+    const existingProfile = profileRepository.findFirst();
+    const targetUrl = url || existingProfile?.linkedin_url;
+
+    if (!targetUrl) {
+      logger.error('No LinkedIn URL provided and none set in profile.');
+      logger.info('Usage: autoply profile sync-linkedin https://linkedin.com/in/username');
+      process.exit(1);
+    }
+
+    const ora = (await import('ora')).default;
+    const spinner = ora(`Fetching LinkedIn profile from ${targetUrl}...`).start();
+
+    try {
+      const { scrapeLinkedInProfile } = await import('../../scrapers/linkedin-profile');
+      const linkedinData = await scrapeLinkedInProfile(targetUrl);
+      spinner.succeed('LinkedIn profile data extracted!');
+
+      const expUpdates = linkedinData.experience.map((e) => ({
+        title: e.title,
+        company: e.company,
+        location: e.location,
+        start_date: e.startDate || '',
+        end_date: e.endDate,
+        description: e.description,
+        highlights: [],
+      }));
+
+      const eduUpdates = linkedinData.education.map((e) => ({
+        institution: e.institution,
+        degree: e.degree || 'Degree',
+        field: e.field,
+        start_date: e.startDate,
+        end_date: e.endDate,
+      }));
+
+      const mergedSkills = Array.from(
+        new Set([...(existingProfile?.skills || []), ...linkedinData.skills])
+      );
+
+      const updates = {
+        linkedin_url: targetUrl,
+        location: linkedinData.location || existingProfile?.location,
+        skills: mergedSkills,
+        experience: expUpdates.length > 0 ? expUpdates : existingProfile?.experience || [],
+        education: eduUpdates.length > 0 ? eduUpdates : existingProfile?.education || [],
+      };
+
+      if (existingProfile && existingProfile.id !== undefined) {
+        profileRepository.update(existingProfile.id, updates);
+        logger.success('Profile synced with LinkedIn data.');
+      } else {
+        logger.error('Please create a base profile first with "autoply init".');
+      }
+    } catch (error) {
+      spinner.fail();
+      logger.error(`LinkedIn sync failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      process.exit(1);
+    }
   });

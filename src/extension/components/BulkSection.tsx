@@ -1,7 +1,7 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import { Link2, Plus, Play, Loader2, CheckCircle, AlertCircle, Clock, X } from 'lucide-react';
 import type { QueueItem } from '../../types';
-import { API_BASE } from '../constants';
+import { getApiBaseUrl } from '../utils/api-config';
 
 const QUEUE_STATUS_ICON: Record<string, React.ReactNode> = {
   pending: <Clock className="w-3.5 h-3.5 text-amber-400" />,
@@ -38,7 +38,8 @@ export const BulkSection = ({
 
   const fetchQueueItems = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/queue`);
+      const base = await getApiBaseUrl();
+      const res = await fetch(`${base}/queue`);
       if (res.ok) {
         const data = await res.json();
         setQueueItems(data.items || []);
@@ -65,6 +66,12 @@ export const BulkSection = ({
   }, [stats, fetchQueueItems]);
 
   const hasQueueItems = queueItems.length > 0;
+
+  const progress = useMemo(() => {
+    if (!queueItems.length) return 0;
+    const completed = queueItems.filter(i => i.status === 'completed' || i.status === 'failed').length;
+    return (completed / queueItems.length) * 100;
+  }, [queueItems]);
 
   return (
     <div className="card space-y-4">
@@ -106,16 +113,32 @@ export const BulkSection = ({
       </div>
 
       {stats && (stats.pending > 0 || stats.completed > 0 || stats.failed > 0) && (
-        <div className="flex items-center justify-center gap-4 text-xs">
-          <span className="text-(--text-tertiary)">
-            Pending: <span className="font-semibold text-amber-400">{stats.pending}</span>
-          </span>
-          <span className="text-(--text-tertiary)">
-            Done: <span className="font-semibold text-emerald-400">{stats.completed}</span>
-          </span>
-          <span className="text-(--text-tertiary)">
-            Failed: <span className="font-semibold text-rose-400">{stats.failed}</span>
-          </span>
+        <div className="space-y-3">
+          <div className="flex items-center justify-center gap-4 text-xs">
+            <span className="text-(--text-tertiary)">
+              Pending: <span className="font-semibold text-amber-400">{stats.pending}</span>
+            </span>
+            <span className="text-(--text-tertiary)">
+              Done: <span className="font-semibold text-emerald-400">{stats.completed}</span>
+            </span>
+            <span className="text-(--text-tertiary)">
+              Failed: <span className="font-semibold text-rose-400">{stats.failed}</span>
+            </span>
+          </div>
+          {isProcessing && (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-[0.6rem] text-(--text-tertiary) px-1">
+                <span>Processing Queue</span>
+                <span>{Math.round(progress)}%</span>
+              </div>
+              <div className="h-1 w-full bg-gray-200 dark:bg-gray-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-indigo-500 transition-all duration-300 ease-out"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+            </div>
+          )}
         </div>
       )}
 

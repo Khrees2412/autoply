@@ -1,5 +1,6 @@
 import type { AIProvider } from '../types';
 import type { Profile } from '../types';
+import { fetchProfileLinksContext } from '../utils/link-context-fetcher';
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
@@ -13,7 +14,7 @@ Guidelines:
 - Be specific and concrete - use real examples from the user's experience
 - Sound authentic and conversational, like talking to a supportive mentor
 - Include specific metrics, numbers, and outcomes when available
-- Don't make up experiences - only use what's in their profile
+- Don't make up experiences - only use what's in their profile, resume, or external links
 - If there's no relevant experience in their profile, acknowledge that and suggest how they might approach the question
 - Keep answers comprehensive enough to be useful but not rambling
 - Use their name to personalize the response
@@ -26,7 +27,8 @@ export async function answerQuestionFromProfile(
   question: string,
   history: ChatMessage[] = []
 ): Promise<string> {
-  const prompt = buildChatPrompt(profile, question, history);
+  const linkContext = await fetchProfileLinksContext(profile);
+  const prompt = buildChatPrompt(profile, question, history, linkContext);
   return provider.generateText(prompt, CHAT_SYSTEM_PROMPT);
 }
 
@@ -36,8 +38,13 @@ function formatHistory(history: ChatMessage[]): string {
   return `\n## Conversation So Far\n${lines.join('\n\n')}\n`;
 }
 
-function buildChatPrompt(profile: Profile, question: string, history: ChatMessage[]): string {
-  return `The user "${profile.name}" is preparing for job interviews and has a question. Use ONLY the information from their profile below to craft your answer. Do not make up any experiences or details that aren't listed.
+function buildChatPrompt(
+  profile: Profile,
+  question: string,
+  history: ChatMessage[],
+  linkContext: string = ''
+): string {
+  return `The user "${profile.name}" is preparing for job interviews and has a question. Use ONLY the information from their profile, resume, and external links below to craft your answer. Do not make up any experiences or details that aren't listed.
 ${formatHistory(history)}
 ## Current Question
 ${question}
@@ -46,8 +53,15 @@ ${question}
 
 ## ${profile.name}'s Profile
 
+${profile.email ? `Email: ${profile.email}` : ''}
+${profile.phone ? `Phone: ${profile.phone}` : ''}
+${profile.location ? `Location: ${profile.location}` : ''}
+${profile.linkedin_url ? `LinkedIn: ${profile.linkedin_url}` : ''}
+${profile.github_url ? `GitHub: ${profile.github_url}` : ''}
+${profile.portfolio_url ? `Portfolio: ${profile.portfolio_url}` : ''}
+
 ### Skills
-${profile.skills.join(', ')}
+${profile.skills.length > 0 ? profile.skills.join(', ') : 'None listed.'}
 
 ### Work Experience
 ${
@@ -82,9 +96,13 @@ ${edu.gpa ? `GPA: ${edu.gpa}` : ''}
     : 'No education listed in profile.'
 }
 
+${profile.base_resume ? `### Base Resume\n${profile.base_resume}\n` : ''}
+${profile.base_cover_letter ? `### Base Cover Letter\n${profile.base_cover_letter}\n` : ''}
+${linkContext ? `### External Links & Portfolio Context\n${linkContext}\n` : ''}
+
 ---
 
-Based ONLY on the profile information above, craft a compelling answer to the current question. ${history.length > 0 ? 'The conversation history above provides context — reference it where relevant.' : ''} Use specific examples, metrics, and experiences from their background. Structure your response using storytelling - don't just list facts, but show how their experience prepared them for this type of question.
+Based ONLY on the profile and link information above, craft a compelling answer to the current question. ${history.length > 0 ? 'The conversation history above provides context — reference it where relevant.' : ''} Use specific examples, metrics, and experiences from their background. Structure your response using storytelling - don't just list facts, but show how their experience prepared them for this type of question.
 
 If the profile doesn't contain relevant information for this question, be honest about that but still provide helpful guidance on how they might approach answering it.`;
 }
