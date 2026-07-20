@@ -2,10 +2,11 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { profileRepository } from '../../db/repositories/profile';
 import { createAIProvider } from '../../ai/provider';
-import { fetchProfileLinksContext } from '../../utils/link-context-fetcher';
+import { fetchProfileLinksContext, fetchJobUrlContext } from '../../utils/link-context-fetcher';
 import type { Profile } from '../../types';
 
 const ChatRequestSchema = z.object({
+  url: z.string().optional(),
   messages: z.array(
     z.object({
       role: z.enum(['user', 'assistant']),
@@ -70,7 +71,18 @@ export function registerChatRoutes(app: FastifyInstance): void {
         });
       }
 
-      const { messages } = parsedBody.data;
+      const { messages, url } = parsedBody.data;
+
+      // Extract URLs from current active tab or user messages
+      const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user')?.content || '';
+      const messageUrlMatch = lastUserMsg.match(/https?:\/\/[^\s]+/i);
+      const targetUrl = url || (messageUrlMatch ? messageUrlMatch[0] : undefined);
+
+      // Fetch live job context if a URL is active/provided
+      let jobContext = '';
+      if (targetUrl) {
+        jobContext = await fetchJobUrlContext(targetUrl);
+      }
 
       // Load user profile
       const profile = profileRepository.findFirst();
@@ -83,13 +95,18 @@ export function registerChatRoutes(app: FastifyInstance): void {
         }
       }
 
-      const systemPrompt = `You are Autoply Assistant, a career coach and job application helper. You have access to the user's complete professional profile (including portfolio, GitHub, and LinkedIn details) and can help them with:
-- Answering application questions
-- Interview preparation
-- Resume and cover letter advice
-- Career guidance
+      if (jobContext) {
+        profileContext = `${jobContext}\n\n${profileContext}`;
+      }
 
-Here is the user's profile:
+      const systemPrompt = `You are Autoply Assistant, a career coach and job application helper. You have access to the user's complete professional profile (including portfolio, GitHub, and LinkedIn details) and the active job posting page (if provided).
+
+STRICT RESPONSE RULES:
+1. BREVITY & CONCISENESS: Be extremely direct and concise. NO fluff, preamble, greetings, filler text, or conversational intros/outros (e.g. "Sure!", "Here is a summary", "Let me know if you need help"). Jump straight to the point.
+2. ZERO HALLUCINATION: Rely ONLY on facts explicitly stated in the active job context, profile, and link context below. Do NOT invent, assume, or hallucinate any job requirements, company details, skills, experience, or metrics not present in the context. If information is missing, state briefly that it is not in the context.
+3. CLEAR FORMATTING: Use clean, well-structured Markdown (lists, bold text, code blocks) for readability.
+
+Here is the context:
 ${profileContext}`;
 
       const conversationText = messages

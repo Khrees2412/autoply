@@ -650,3 +650,80 @@
     font-size: 1.125rem;
   }
 }
+
+/* Chat Markdown Formatting */
+.chat-markdown p {
+  margin-bottom: 0.5rem;
+}
+.chat-markdown p:last-child {
+  margin-bottom: 0;
+}
+.chat-markdown ul,
+.chat-markdown ol {
+  margin-top: 0.25rem;
+  margin-bottom: 0.5rem;
+  padding-left: 1.25rem;
+}
+.chat-markdown ul {
+  list-style-type: disc;
+}
+.chat-markdown ol {
+  list-style-type: decimal;
+}
+.chat-markdown li {
+  margin-bottom: 0.2rem;
+}
+.chat-markdown strong,
+.chat-markdown b {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.chat-markdown h1,
+.chat-markdown h2,
+.chat-markdown h3,
+.chat-markdown h4 {
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-top: 0.6rem;
+  margin-bottom: 0.3rem;
+}
+.chat-markdown h1 {
+  font-size: 0.95rem;
+}
+.chat-markdown h2 {
+  font-size: 0.9rem;
+}
+.chat-markdown h3 {
+  font-size: 0.85rem;
+}
+.chat-markdown code {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  padding: 1px 4px;
+  font-family: monospace;
+  font-size: 0.82em;
+}
+.chat-markdown pre {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 8px 10px;
+  overflow-x: auto;
+  margin: 0.5rem 0;
+}
+.chat-markdown pre code {
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+}
+.chat-markdown blockquote {
+  border-left: 3px solid var(--accent-blue);
+  padding-left: 8px;
+  color: var(--text-secondary);
+  font-style: italic;
+  margin: 0.4rem 0;
+}
+.chat-markdown a {
+  color: var(--accent-blue-hover);
+  text-decoration: underline;
+}

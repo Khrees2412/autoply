@@ -272,3 +272,53 @@ export async function fetchProfileLinksContext(profile: {
 
   return `\n\nExternal Links & Portfolio Context:\n${contexts.join('\n\n')}`;
 }
+
+/**
+ * Fetch and format context from an active job posting page URL or link dropped in chat
+ */
+export async function fetchJobUrlContext(url: string): Promise<string> {
+  if (!url || !url.startsWith('http')) return '';
+
+  const cached = getCached(url);
+  if (cached) return cached;
+
+  try {
+    const { detectPlatform } = await import('./url-parser');
+    const platform = detectPlatform(url) || 'generic';
+
+    if (platform !== 'generic') {
+      try {
+        const { createScraper } = await import('../scrapers');
+        const scraper = createScraper(platform);
+        const jobData = await scraper.scrape(url);
+
+        const parts = [
+          `Active Job Posting Context (${url}):`,
+          `- Job Title: ${jobData.title}`,
+          `- Company: ${jobData.company}`,
+          jobData.location ? `- Location: ${jobData.location}` : null,
+          jobData.job_type ? `- Job Type: ${jobData.job_type}` : null,
+          jobData.description ? `- Description:\n  ${jobData.description.slice(0, 3000)}` : null,
+          jobData.requirements?.length
+            ? `- Requirements:\n  * ${jobData.requirements.join('\n  * ')}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join('\n');
+
+        setCache(url, parts);
+        return parts;
+      } catch {
+        // Fall back to HTTP web content fetcher
+      }
+    }
+
+    const textContent = await fetchWebContent(url, 'portfolio');
+    const result = `Active Job / Page Context (${url}):\n${textContent}`;
+    setCache(url, result);
+    return result;
+  } catch (err) {
+    logger.warn(`Failed to fetch job URL context for ${url}: ${err}`, {}, 'api');
+    return `Job Page Link: ${url}`;
+  }
+}

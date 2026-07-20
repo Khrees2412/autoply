@@ -251,13 +251,17 @@ export function useDownloadDocument() {
 /** Send a chat message and get AI response */
 export function useSendChatMessage() {
   return useMutation({
-    mutationFn: async (
-      messages: Array<{ role: 'user' | 'assistant'; content: string }>
-    ): Promise<string> => {
+    mutationFn: async ({
+      messages,
+      url,
+    }: {
+      messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+      url?: string;
+    }): Promise<string> => {
       const data = await fetchJson<{ reply: string }>(await getApiUrl('/chat'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages }),
+        body: JSON.stringify({ messages, url }),
       });
       return data.reply;
     },

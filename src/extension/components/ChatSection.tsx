@@ -36,7 +36,20 @@ const SUGGESTION_CHIPS = [
   'What questions should I ask in an interview?',
 ];
 
-// ── Message Bubble ───────────────────────────────────────────────────────────
+import { marked } from 'marked';
+
+marked.setOptions({
+  gfm: true,
+  breaks: true,
+});
+
+function renderMarkdown(content: string): string {
+  try {
+    return marked.parse(content) as string;
+  } catch {
+    return content;
+  }
+}
 
 const MessageBubble = ({ message }: { message: ChatMessage }) => {
   const isUser = message.role === 'user';
@@ -62,7 +75,14 @@ const MessageBubble = ({ message }: { message: ChatMessage }) => {
             : 'bg-(--bg-tertiary) text-(--text-secondary) border border-(--border-subtle) rounded-bl-md'
         }`}
       >
-        <div className="whitespace-pre-wrap break-words">{message.content}</div>
+        {isUser ? (
+          <div className="whitespace-pre-wrap break-words">{message.content}</div>
+        ) : (
+          <div
+            className="chat-markdown break-words"
+            dangerouslySetInnerHTML={{ __html: renderMarkdown(message.content) }}
+          />
+        )}
         <div
           className={`text-[10px] mt-1.5 ${
             isUser ? 'text-blue-200/60' : 'text-(--text-tertiary)'

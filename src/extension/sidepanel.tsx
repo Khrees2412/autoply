@@ -252,7 +252,10 @@ const AppContent = () => {
         ...chatMessages.map((m) => ({ role: m.role, content: m.content })),
         { role: 'user' as const, content },
       ];
-      const reply = await chatMutation.mutateAsync(allMessages);
+      const reply = await chatMutation.mutateAsync({
+        messages: allMessages,
+        url: currentTabUrl,
+      });
       addChatMessage({
         id: `assistant-${Date.now()}`,
         role: 'assistant',
@@ -269,7 +272,7 @@ const AppContent = () => {
     } finally {
       setIsChatLoading(false);
     }
-  }, [chatMessages, addChatMessage, setIsChatLoading, chatMutation]);
+  }, [chatMessages, addChatMessage, setIsChatLoading, chatMutation, currentTabUrl]);
 
   // ── Event handlers ──────────────────────────────────────────────────
 
